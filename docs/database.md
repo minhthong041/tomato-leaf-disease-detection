@@ -167,7 +167,7 @@ Các cột kết quả (`disease_id` → `lesions`) là NULL khi chưa có kết
 Số phần tử của `lesions` phải bằng `lesion_count` (code pipeline đảm bảo, database không kiểm tra).
 
 Những thứ **không** lưu trong database:
-- **Khuyến nghị xử lý IPM**: chỉ phụ thuộc vào cấp độ, nên để thành hằng số trong code và API trả kèm kết quả.
+- **Khuyến nghị xử lý IPM**: chỉ phụ thuộc vào cấp độ, nên để thành hằng số (`IPM_RECOMMENDATIONS` trong `backend/image_processing/severity.py`) và API trả kèm kết quả.
 - **Vector đặc trưng** (GLCM, Color Moments) và **file trọng số model**: dùng trong lúc phân loại, không cần lưu theo từng lần chẩn đoán.
 
 ### 2.4. `diagnosis_steps`

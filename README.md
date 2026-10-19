@@ -1,18 +1,22 @@
 # Hệ thống phát hiện, phân loại và đo lường mức độ nghiêm trọng của bệnh trên lá cà chua dựa trên xử lý ảnh số
 
-Đồ án môn **Xử lý ảnh**: chương trình nhận ảnh một chiếc lá, dùng các kỹ thuật xử lý ảnh cổ điển (không dùng học máy) để kết luận lá **khỏe hay bị bệnh**. Nếu lá bị bệnh, chương trình cho biết tỷ lệ diện tích bệnh, mức độ nặng nhẹ và trả về ảnh đã khoanh vùng từng vết bệnh.
+Đồ án môn **Xử lý ảnh số**: người dùng tải lên ảnh **một chiếc lá cà chua**, hệ thống tách lá khỏi nền, tìm các vết bệnh, tính **tỷ lệ diện tích lá bị bệnh**, xếp **cấp độ 0–4** kèm khuyến nghị xử lý theo IPM (quản lý dịch hại tổng hợp), và nhận diện **tên bệnh**. Giao diện web hiển thị ảnh qua từng bước xử lý.
+
+Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 
 ## Mục tiêu
 
-| Mục tiêu | Cách làm | Kết quả |
+| Giai đoạn | Cách làm | Kết quả |
 |---|---|---|
-| Tách nền | Chuyển RGB → HSV, phân ngưỡng (Otsu / ngưỡng HSV), closing để lấp lỗ, giữ contour lá lớn nhất | Mask lá, diện tích lá |
-| Nhận diện vết bệnh | Ngưỡng HSV cho vùng nâu/vàng/đen bên trong lá, opening để khử nhiễu | Mask vết bệnh |
-| Tính tỷ lệ diện tích | Contours trên mask vết bệnh: diện tích, chu vi, độ tròn, tâm, bounding box | Số đốm, tỷ lệ nhiễm, chi tiết từng đốm |
-| Kết luận | Phân mức theo tỷ lệ nhiễm | `healthy` / `mild` / `moderate` / `severe`, ảnh khoanh vùng |
+| 1. Tiền xử lý | Resize 512×512, khử nhiễu Bilateral / Median, CLAHE trên kênh L của CIELAB | Ảnh chuẩn hóa |
+| 2. Tách lá khỏi nền | HSV, phân ngưỡng kênh S (Otsu / `inRange`), closing lấp lỗ | Mask lá, diện tích lá |
+| 3. Tách đốm bệnh | Mask mô lá khỏe theo Hue 35–85, lá trừ mô khỏe, opening + closing, contours | Mask vết bệnh, diện tích và thông số từng đốm |
+| 4. Phân loại tên bệnh | Đặc trưng GLCM + Color Moments, SVM / Random Forest (PlantVillage, lá cà chua) | Tên bệnh, độ tin cậy |
+| 5. Mức độ nghiêm trọng | S = diện tích bệnh / diện tích lá × 100% | Cấp 0–4, khuyến nghị IPM |
 
 ```
-Ảnh lá ─► HSV ─► Tách nền ─► Nhận diện vết bệnh ─► Contours ─► Tỷ lệ & mức độ ─► Ảnh khoanh vùng
+Ảnh lá ─► Tiền xử lý ─► Tách lá ─► Tách đốm bệnh ─► Contours ─► S (%) ─► Cấp 0–4 + khuyến nghị
+                                 └──────────────► Đặc trưng ─► SVM / RF ─► Tên bệnh
 ```
 
 ## Trạng thái
@@ -22,32 +26,48 @@
 | Database (PostgreSQL) và model Django | Xong |
 | Trang quản trị `/admin/` | Xong |
 | Đăng nhập JWT, CORS cho frontend | Xong |
-| Pipeline xử lý ảnh (`backend/image_processing/`) | Chưa làm |
-| API tải ảnh và trả kết quả | Chưa làm |
-| Giao diện frontend | Mới có khung |
+| Khung pipeline và quy ước vào/ra ([docs/pipeline.md](docs/pipeline.md)) | Xong |
+| Thuật toán giai đoạn 1–4 (`backend/image_processing/`) | Chưa làm — mỗi thành viên cài đặt file của mình |
+| Cấp độ 0–4 và khuyến nghị IPM | Xong |
+| Danh sách lớp bệnh (bảng `diseases`) | Chờ nhóm chốt 4–5 lớp |
+| API tải ảnh, lịch sử, kết quả | Chưa làm |
+| Giao diện frontend | Có khung: đăng nhập, tải ảnh, kết quả, lịch sử — chờ API |
 
 ## Công nghệ
 
 - **Backend:** Python 3.12, Django 6.1, Django REST Framework, SimpleJWT, PostgreSQL (psycopg 3)
-- **Xử lý ảnh:** OpenCV, NumPy, Pillow
-- **Frontend:** React 19, Vite 8, MUI 9
+- **Xử lý ảnh và phân loại:** OpenCV, NumPy, scikit-image, scikit-learn, SciPy, Matplotlib
+- **Frontend:** React 19, Vite 8, MUI 9 (Material UI), React Router 7
 
 ## Cấu trúc thư mục
 
 ```
 tomato-leaf-disease-detection/
 ├── backend/
-│   ├── core/               # settings, urls của Django
-│   ├── api/                # model, admin, API, lưu ảnh (images.py)
-│   ├── image_processing/   # pipeline xử lý ảnh (đang làm)
-│   ├── dataset/            # ảnh thử và ảnh tô tay — không đưa lên git
-│   ├── media/              # ảnh người dùng tải lên (uploads/) và ảnh kết quả (results/) — không đưa lên git
+│   ├── core/                 # settings, urls của Django
+│   ├── api/                  # model, admin, API, lưu ảnh (images.py)
+│   ├── image_processing/     # pipeline xử lý ảnh, xem docs/pipeline.md
+│   │   ├── preprocessing.py  #   giai đoạn 1 — Thành viên 1
+│   │   ├── segmentation.py   #   giai đoạn 2, 3 — Thành viên 2
+│   │   ├── classifier.py     #   giai đoạn 4 — Thành viên 3
+│   │   ├── severity.py       #   giai đoạn 5: cấp độ, khuyến nghị IPM
+│   │   ├── pipeline.py       #   ghép các giai đoạn, chạy thử một ảnh
+│   │   └── models/           #   file model phân loại (.joblib)
+│   ├── dataset/              # ảnh thử và ảnh tô tay — không đưa lên git
+│   ├── media/                # ảnh tải lên (uploads/), ảnh kết quả (results/), ảnh từng bước (steps/) — không đưa lên git
 │   ├── requirements.txt
 │   └── .env.example
-├── frontend/               # React + Vite
+├── frontend/
+│   ├── src/api/              # gọi backend, tự refresh token
+│   ├── src/auth/             # trạng thái đăng nhập, chặn trang khi chưa đăng nhập
+│   ├── src/pages/            # các trang
+│   ├── src/components/       # Layout, thanh đo cấp độ, ảnh từng bước
+│   └── .env.example
 └── docs/
-    ├── leaf-disease-db.md  # schema xuất từ DrawSQL (nguồn chuẩn)
-    └── database.md         # giải thích database cho cả nhóm
+    ├── TongQuanDuAn.md       # phạm vi, kỹ thuật, phân công (tài liệu chính)
+    ├── pipeline.md           # quy ước vào/ra giữa các module xử lý ảnh
+    ├── leaf-disease-db.md    # schema xuất từ DrawSQL (nguồn chuẩn)
+    └── database.md           # giải thích database cho cả nhóm
 ```
 
 ## Cài đặt
@@ -98,10 +118,19 @@ Từ thư mục `frontend/`:
 
 ```powershell
 npm install
+Copy-Item .env.example .env   # VITE_API_URL: địa chỉ API backend
 npm run dev
 ```
 
-Frontend chạy ở http://localhost:5173.
+Frontend chạy ở http://localhost:5173. Chưa đăng nhập thì mọi trang chuyển về `/login`; tài khoản tạo bằng `createsuperuser` hoặc trong `/admin/`.
+
+### Sau khi kéo code mới
+
+```powershell
+pip install -r requirements.txt   # trong backend/, khi requirements.txt thay đổi
+python manage.py migrate          # khi có migration mới
+npm install                       # trong frontend/, khi package.json thay đổi
+```
 
 ## API hiện có
 
@@ -119,7 +148,8 @@ Các API khác yêu cầu header `Authorization: Bearer <access token>`. Access 
 python manage.py makemigrations api   # sau khi sửa models.py
 python manage.py migrate
 python manage.py check
-python manage.py test api             # chạy test
+python manage.py test api image_processing   # chạy test
+python -m image_processing.pipeline anh.jpg --out ket_qua   # chạy pipeline trên một ảnh
 npm run lint                          # kiểm tra code frontend
 ```
 
@@ -129,4 +159,5 @@ npm run lint                          # kiểm tra code frontend
 - **Migration:** chỉ thêm migration mới, không sửa hay xóa migration đã có trên git.
 - **Ảnh không đưa lên git:** nội dung `dataset/` và `media/` bị bỏ qua (chỉ giữ file `.gitkeep`). Bộ ảnh thử của nhóm được chia sẻ riêng.
 - **Thêm thư viện Python:** cập nhật `requirements.txt` bằng `pip freeze | Out-File -Encoding utf8 requirements.txt`. **Đừng dùng `pip freeze > requirements.txt`** trong Windows PowerShell: lệnh đó ghi file dạng UTF-16, GitHub sẽ không xem được nội dung file.
-- **OpenCV:** ảnh được đọc theo thứ tự BGR (dùng `cv2.COLOR_BGR2HSV`), và kênh H chạy 0–179 chứ không phải 0–359.
+- **Pipeline:** đọc [docs/pipeline.md](docs/pipeline.md) trước khi viết module xử lý ảnh — kiểu dữ liệu vào/ra, tên ảnh trung gian, các quy tắc `pipeline.run()` kiểm tra.
+- **OpenCV:** ảnh được đọc theo thứ tự BGR (dùng `cv2.COLOR_BGR2HSV`), và kênh H chạy 0–179 chứ không phải 0–359. Đọc ảnh bằng `pipeline.load_image()` thay cho `cv2.imread()` để không lỗi với đường dẫn có dấu tiếng Việt.

@@ -5,6 +5,9 @@ from django.db.models import ProtectedError
 from django.test import TestCase
 from django.utils import timezone
 
+from image_processing import steps
+from image_processing.severity import IPM_RECOMMENDATIONS
+
 from .models import DiagnosisHistory, DiagnosisStep, Disease, User
 
 Level = DiagnosisHistory.SeverityLevel
@@ -95,3 +98,13 @@ class DiagnosisConstraintTests(TestCase):
         self.make_history(**self.done_fields())
         with self.assertRaises(ProtectedError):
             self.early_blight.delete()
+
+
+class PipelineSchemaMatchTests(TestCase):
+    """Pipeline (image_processing) và database phải dùng cùng tên bước và cùng thang cấp độ."""
+
+    def test_step_names(self):
+        self.assertEqual(steps.ORDER, tuple(DiagnosisStep.Step.values))
+
+    def test_severity_levels(self):
+        self.assertEqual(sorted(IPM_RECOMMENDATIONS), Level.values)
