@@ -2,7 +2,7 @@
 
 Đồ án môn **Xử lý ảnh số**: người dùng tải lên ảnh **một chiếc lá cà chua**, hệ thống tách lá khỏi nền, tìm các vết bệnh, tính **tỷ lệ diện tích lá bị bệnh**, xếp **cấp độ 0–4** kèm khuyến nghị xử lý theo IPM (quản lý dịch hại tổng hợp), và nhận diện **tên bệnh**. Giao diện web hiển thị ảnh qua từng bước xử lý.
 
-Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md). Phân công và quy trình Git: [docs/PhanCong.md](docs/PhanCong.md).
+Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 
 ## Mục tiêu
 
@@ -53,8 +53,7 @@ tomato-leaf-disease-detection/
 │   │   ├── severity.py       #   giai đoạn 5: cấp độ, khuyến nghị IPM
 │   │   ├── pipeline.py       #   ghép các giai đoạn, chạy thử một ảnh
 │   │   └── models/           #   file model phân loại (.joblib)
-│   ├── dataset/              # ảnh PlantVillage, mask tô tay, ảnh tự chụp — không đưa lên git (trừ splits/*.txt)
-│   ├── experiments/          # script thí nghiệm, đánh giá; hình kết quả ở output/ (không đưa lên git)
+│   ├── dataset/              # ảnh thử và ảnh tô tay — không đưa lên git
 │   ├── media/                # ảnh tải lên (uploads/), ảnh kết quả (results/), ảnh từng bước (steps/) — không đưa lên git
 │   ├── requirements.txt
 │   └── .env.example
@@ -66,7 +65,6 @@ tomato-leaf-disease-detection/
 │   └── .env.example
 └── docs/
     ├── TongQuanDuAn.md       # phạm vi, kỹ thuật, phân công (tài liệu chính)
-    ├── PhanCong.md           # việc từng thành viên, quy trình nhánh và PR
     ├── pipeline.md           # quy ước vào/ra giữa các module xử lý ảnh
     ├── leaf-disease-db.md    # schema xuất từ DrawSQL (nguồn chuẩn)
     └── database.md           # giải thích database cho cả nhóm
@@ -157,7 +155,6 @@ npm run lint                          # kiểm tra code frontend
 
 ## Lưu ý cho thành viên
 
-- **Bắt đầu từ đây:** đọc [docs/PhanCong.md](docs/PhanCong.md) để biết việc của mình, tên nhánh, người review và các lệnh Git.
 - **Database:** đọc [docs/database.md](docs/database.md) trước khi sửa model. Khi đổi schema, cập nhật cả diagram DrawSQL, `docs/leaf-disease-db.md` và `docs/database.md`.
 - **Migration:** chỉ thêm migration mới, không sửa hay xóa migration đã có trên git.
 - **Ảnh không đưa lên git:** nội dung `dataset/` và `media/` bị bỏ qua (chỉ giữ file `.gitkeep`). Bộ ảnh thử của nhóm được chia sẻ riêng.
