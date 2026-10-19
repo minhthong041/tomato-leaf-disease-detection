@@ -6,7 +6,9 @@ from django.db.models import F, Q
 from django.db.models.functions import Lower
 from django.utils import timezone
 
-from .images import diagnosis_original_path, diagnosis_processed_path, strip_image_metadata
+from .images import (
+    diagnosis_original_path, diagnosis_processed_path, diagnosis_step_path, strip_image_metadata,
+)
 
 # Schema: docs/leaf-disease-db.md — mô tả chi tiết: docs/database.md
 
@@ -115,7 +117,34 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
 
 
 # ==========================================
-# 3. NGHIỆP VỤ (LỊCH SỬ, FEEDBACK, BÁO LỖI)
+# 3. DANH MỤC BỆNH (LỚP CỦA BỘ PHÂN LOẠI)
+# ==========================================
+
+class Disease(TimeStampedModel):
+    # Mỗi dòng là một lớp bệnh lá cà chua của bộ phân loại (nhãn PlantVillage), kể cả lớp lá khỏe
+    code = models.CharField(max_length=100, unique=True) # ví dụ Tomato___Early_blight
+    name = models.CharField(max_length=255) # tên tiếng Việt hiển thị cho người dùng
+    description = models.TextField(null=True, blank=True)
+    is_healthy = models.BooleanField(default=False) # lớp Tomato___healthy
+
+    class Meta:
+        db_table = 'diseases'
+        ordering = ['name']
+        verbose_name = 'bệnh'
+        verbose_name_plural = 'bệnh'
+        constraints = [
+            # Chỉ có một lớp "lá khỏe"
+            models.UniqueConstraint(
+                fields=['is_healthy'], condition=Q(is_healthy=True), name='diseases_one_healthy',
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+# ==========================================
+# 4. NGHIỆP VỤ (LỊCH SỬ, FEEDBACK, BÁO LỖI)
 # ==========================================
 
 class DiagnosisHistory(TimeStampedModel):
@@ -125,11 +154,13 @@ class DiagnosisHistory(TimeStampedModel):
         DONE = 'done', 'Hoàn tất'
         FAILED = 'failed', 'Lỗi'
 
-    class Severity(models.TextChoices):
-        HEALTHY = 'healthy', 'Khỏe mạnh'
-        MILD = 'mild', 'Nhẹ'
-        MODERATE = 'moderate', 'Trung bình'
-        SEVERE = 'severe', 'Nặng'
+    # Thang Cấp 0–4 theo tỷ lệ diện tích bệnh S = lesion_area_px / leaf_area_px
+    class SeverityLevel(models.IntegerChoices):
+        HEALTHY = 0, 'Cấp 0 - Khỏe mạnh' # S = 0%
+        MILD = 1, 'Cấp 1 - Nhiễm nhẹ' # 0% < S < 5%
+        MODERATE = 2, 'Cấp 2 - Trung bình' # 5% <= S < 15%
+        SEVERE = 3, 'Cấp 3 - Nặng' # 15% <= S <= 35%
+        CRITICAL = 4, 'Cấp 4 - Nguy kịch' # S > 35%
 
     # PROTECT: tài khoản chỉ được ẩn danh hóa, không xóa thật -> giữ lịch sử chẩn đoán
     user = models.ForeignKey(
@@ -137,7 +168,7 @@ class DiagnosisHistory(TimeStampedModel):
         related_name='diagnoses', db_index=False, # đã có idx_dh_user_created
     )
     original_image = models.ImageField(upload_to=diagnosis_original_path, max_length=500)
-    # Ảnh gốc đã khoanh vùng (bounding box) các vết bệnh
+    # Ảnh gốc đã vẽ đường viền (contours) quanh các vết bệnh
     processed_image = models.ImageField(
         upload_to=diagnosis_processed_path, max_length=500, null=True, blank=True,
     )
@@ -146,10 +177,18 @@ class DiagnosisHistory(TimeStampedModel):
     )
     error_message = models.TextField(null=True, blank=True)
 
-    # Kết quả pipeline xử lý ảnh — NULL khi chưa có kết quả (pending/processing/failed)
-    # healthy = lá khỏe; mild/moderate/severe = lá bệnh, theo infected_ratio
-    severity = models.CharField(
-        max_length=20, choices=Severity.choices, null=True, blank=True, db_index=True,
+    # Kết quả pipeline — NULL khi chưa có kết quả (pending/processing/failed)
+    # Phân loại tên bệnh (giai đoạn 4)
+    disease = models.ForeignKey(
+        Disease, on_delete=models.PROTECT, null=True, blank=True, related_name='diagnoses',
+    )
+    disease_confidence = models.DecimalField( # xác suất của lớp dự đoán (predict_proba)
+        max_digits=5, decimal_places=4, null=True, blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+    )
+    # Định lượng mức độ (giai đoạn 2, 3, 5)
+    severity_level = models.PositiveSmallIntegerField(
+        choices=SeverityLevel.choices, null=True, blank=True, db_index=True,
     )
     leaf_area_px = models.PositiveIntegerField(null=True, blank=True) # mask lá sau tách nền
     lesion_area_px = models.PositiveIntegerField(null=True, blank=True) # mask vết bệnh
@@ -185,8 +224,26 @@ class DiagnosisHistory(TimeStampedModel):
                 name='dh_lesion_within_leaf',
             ),
             models.CheckConstraint(
+                condition=Q(disease_confidence__isnull=True)
+                | Q(disease_confidence__gte=0, disease_confidence__lte=1),
+                name='dh_confidence_between_0_1',
+            ),
+            models.CheckConstraint(
+                condition=Q(severity_level__isnull=True) | Q(severity_level__lte=4),
+                name='dh_level_between_0_4',
+            ),
+            # Cấp 0 <=> không có vết bệnh. So trên lesion_area_px, không so trên infected_ratio
+            # vì ratio làm tròn 4 chữ số có thể ra 0.0000 khi vẫn còn vết bệnh rất nhỏ
+            models.CheckConstraint(
+                condition=Q(severity_level__isnull=True) | Q(lesion_area_px__isnull=True)
+                | Q(severity_level=0, lesion_area_px=0)
+                | Q(severity_level__gt=0, lesion_area_px__gt=0),
+                name='dh_level0_iff_no_lesion',
+            ),
+            models.CheckConstraint(
                 condition=~Q(status='done') | Q(
-                    severity__isnull=False, leaf_area_px__isnull=False,
+                    disease__isnull=False, disease_confidence__isnull=False,
+                    severity_level__isnull=False, leaf_area_px__isnull=False,
                     lesion_area_px__isnull=False, infected_ratio__isnull=False,
                     lesion_count__isnull=False,
                 ),
@@ -202,6 +259,45 @@ class DiagnosisHistory(TimeStampedModel):
         if self.original_image and not self.original_image._committed:
             self.original_image = strip_image_metadata(self.original_image)
         super().save(*args, **kwargs)
+
+
+class DiagnosisStep(TimeStampedModel):
+    """Ảnh trung gian của một bước pipeline, để giao diện hiển thị chuỗi biến đổi."""
+
+    class Step(models.TextChoices):
+        # Giai đoạn 1: tiền xử lý
+        RESIZED = 'resized', 'Chuẩn hóa kích thước'
+        DENOISED = 'denoised', 'Khử nhiễu'
+        CLAHE = 'clahe', 'Cân bằng sáng CLAHE'
+        # Giai đoạn 2: tách phiến lá khỏi nền
+        SATURATION = 'saturation', 'Kênh S (HSV)'
+        LEAF_MASK = 'leaf_mask', 'Mặt nạ lá'
+        # Giai đoạn 3: tách đốm bệnh
+        ROI = 'roi', 'Vùng lá (ROI)'
+        HEALTHY_MASK = 'healthy_mask', 'Mặt nạ mô lá khỏe'
+        LESION_MASK_RAW = 'lesion_mask_raw', 'Mặt nạ vết bệnh (trước hình thái học)'
+        LESION_MASK = 'lesion_mask', 'Mặt nạ vết bệnh (sau opening/closing)'
+        # Ảnh contours cuối cùng nằm ở DiagnosisHistory.processed_image
+
+    history = models.ForeignKey(
+        DiagnosisHistory, on_delete=models.CASCADE,
+        related_name='steps', db_index=False, # đã có uq_ds_history_step
+    )
+    step = models.CharField(max_length=30, choices=Step.choices)
+    image = models.ImageField(upload_to=diagnosis_step_path, max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True) # không cần index riêng
+
+    class Meta:
+        db_table = 'diagnosis_steps'
+        ordering = ['id'] # pipeline lưu theo đúng thứ tự các bước
+        verbose_name = 'ảnh bước xử lý'
+        verbose_name_plural = 'ảnh bước xử lý'
+        constraints = [
+            models.UniqueConstraint(fields=['history', 'step'], name='uq_ds_history_step'),
+        ]
+
+    def __str__(self):
+        return f'#{self.history_id} - {self.get_step_display()}'
 
 
 class Feedback(TimeStampedModel):

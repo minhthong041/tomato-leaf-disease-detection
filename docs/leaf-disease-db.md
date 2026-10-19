@@ -1,6 +1,6 @@
-# Schema: leaf_disease_db
+# Schema: tomato_leaf_disease_db
 Database: pgsql
-Tables: 4
+Tables: 6
 Columns are NOT NULL unless marked nullable.
 
 ## users
@@ -26,7 +26,9 @@ original_image: varchar(500)
 processed_image: varchar(500) nullable
 status: varchar(20) indexed default:pending
 error_message: text nullable
-severity: varchar(20) indexed nullable
+disease_id: bigint FK indexed nullable
+disease_confidence: decimal(5,4) nullable
+severity_level: smallint indexed nullable
 created_at: timestamptz
 updated_at: timestamptz
 is_bookmarked: boolean default:false
@@ -35,6 +37,23 @@ lesion_area_px: int nullable
 infected_ratio: decimal(5,4) nullable
 lesion_count: int nullable
 lesions: jsonb nullable
+
+## diseases
+id: bigserial PK
+code: varchar(100) unique
+name: varchar(255)
+description: text nullable
+is_healthy: boolean default:false
+created_at: timestamptz indexed
+updated_at: timestamptz
+
+## diagnosis_steps
+id: bigserial PK
+history_id: bigint FK
+step: varchar(30)
+image: varchar(500)
+created_at: timestamptz
+updated_at: timestamptz
 
 ## feedbacks
 id: bigserial PK
@@ -58,10 +77,13 @@ updated_at: timestamptz
 users.id → diagnosis_histories.user_id (one-to-many)
 diagnosis_histories.id → feedbacks.history_id (one-to-many)
 users.id → error_reports.user_id (one-to-many)
+diseases.id → diagnosis_histories.disease_id (one-to-many)
+diagnosis_histories.id → diagnosis_steps.history_id (one-to-many)
 
 ## Indexes
 diagnosis_histories.6f88c2ed-f6b2-43c6-abeb-6d63dc711e94 (index): user_id, created_at
 diagnosis_histories.86f07853-c307-48a3-85a9-e32a8b61a78e (index): user_id, is_bookmarked
+diagnosis_steps.uq_ds_history_step (unique): history_id, step
 
 ---
 If you suggest changes to this schema, ALSO return them as a DrawSQL patch: one fenced ```json code block, so I can apply them to my diagram. If you are only answering a question, skip the patch.

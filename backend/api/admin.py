@@ -5,7 +5,7 @@ from django.contrib.auth.forms import BaseUserCreationForm
 from django.contrib.auth.forms import UserChangeForm as BaseUserChangeForm
 from django.utils import timezone
 
-from .models import DiagnosisHistory, ErrorReport, Feedback, User
+from .models import DiagnosisHistory, DiagnosisStep, Disease, ErrorReport, Feedback, User
 
 
 class UserCreationForm(BaseUserCreationForm):
@@ -65,14 +65,33 @@ class UserAdmin(BaseUserAdmin):
         self.message_user(request, f'Đã ẩn danh hóa {len(users)} tài khoản.')
 
 
+@admin.register(Disease)
+class DiseaseAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code', 'is_healthy', 'created_at')
+    list_filter = ('is_healthy',)
+    search_fields = ('name', 'code')
+    readonly_fields = ('created_at', 'updated_at')
+
+
+class DiagnosisStepInline(admin.TabularInline):
+    model = DiagnosisStep
+    extra = 0
+    fields = ('step', 'image', 'created_at')
+    readonly_fields = ('created_at',)
+
+
 @admin.register(DiagnosisHistory)
 class DiagnosisHistoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'status', 'severity', 'infected_ratio', 'lesion_count', 'is_bookmarked', 'created_at')
-    list_filter = ('status', 'severity')
+    list_display = (
+        'id', 'user', 'status', 'disease', 'severity_level', 'infected_ratio', 'lesion_count',
+        'is_bookmarked', 'created_at',
+    )
+    list_filter = ('status', 'severity_level', 'disease')
     search_fields = ('user__email',)
-    list_select_related = ('user',)
+    list_select_related = ('user', 'disease')
     raw_id_fields = ('user',)
     readonly_fields = ('created_at', 'updated_at')
+    inlines = [DiagnosisStepInline]
 
 
 @admin.register(Feedback)
