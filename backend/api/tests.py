@@ -20,7 +20,9 @@ class DiagnosisConstraintTests(TestCase):
             'tv1@example.com', 'mat-khau-thu', fullname='Thành viên 1',
             terms_accepted_at=timezone.now(),
         )
-        cls.early_blight = Disease.objects.create(code='Tomato___Early_blight', name='Bệnh đốm vòng')
+        # Các lớp bệnh có sẵn từ migration 0004_seed_diseases
+        cls.early_blight = Disease.objects.get(code='Tomato___Early_blight')
+        cls.healthy = Disease.objects.get(code='Tomato___healthy')
 
     def make_history(self, **fields):
         # Gán đường dẫn có sẵn -> không đọc file, không qua bước xóa EXIF
@@ -77,14 +79,12 @@ class DiagnosisConstraintTests(TestCase):
         ))
 
     def test_healthy_leaf(self):
-        healthy = Disease.objects.create(code='Tomato___healthy', name='Lá khỏe', is_healthy=True)
         self.make_history(**self.done_fields(
-            disease=healthy, severity_level=Level.HEALTHY,
+            disease=self.healthy, severity_level=Level.HEALTHY,
             lesion_area_px=0, infected_ratio=Decimal('0'), lesion_count=0,
         ))
 
     def test_only_one_healthy_disease(self):
-        Disease.objects.create(code='Tomato___healthy', name='Lá khỏe', is_healthy=True)
         with self.assertRaises(IntegrityError), transaction.atomic():
             Disease.objects.create(code='Tomato___healthy_2', name='Lá khỏe 2', is_healthy=True)
 
@@ -98,6 +98,25 @@ class DiagnosisConstraintTests(TestCase):
         self.make_history(**self.done_fields())
         with self.assertRaises(ProtectedError):
             self.early_blight.delete()
+
+
+class SeededDiseaseTests(TestCase):
+    """Migration 0004_seed_diseases nạp đủ 10 lớp lá cà chua của PlantVillage."""
+
+    def test_ten_tomato_classes(self):
+        codes = set(Disease.objects.values_list('code', flat=True))
+        self.assertEqual(codes, {
+            'Tomato___Bacterial_spot', 'Tomato___Early_blight', 'Tomato___Late_blight',
+            'Tomato___Leaf_Mold', 'Tomato___Septoria_leaf_spot',
+            'Tomato___Spider_mites Two-spotted_spider_mite', 'Tomato___Target_Spot',
+            'Tomato___Tomato_Yellow_Leaf_Curl_Virus', 'Tomato___Tomato_mosaic_virus', 'Tomato___healthy',
+        })
+
+    def test_only_healthy_class_is_healthy(self):
+        self.assertEqual(
+            list(Disease.objects.filter(is_healthy=True).values_list('code', flat=True)),
+            ['Tomato___healthy'],
+        )
 
 
 class PipelineSchemaMatchTests(TestCase):
