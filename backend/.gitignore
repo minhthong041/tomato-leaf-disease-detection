@@ -69,6 +69,10 @@ media/**
 dataset/**
 !dataset/**/
 !dataset/**/.gitkeep
+# Danh sách chia train/test dùng chung cho cả nhóm
+!dataset/splits/*.txt
+# Hình, bảng số liệu sinh ra từ các script thí nghiệm
+experiments/output/
 
 # Flask stuff:
 instance/
