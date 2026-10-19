@@ -53,7 +53,8 @@ tomato-leaf-disease-detection/
 │   │   ├── severity.py       #   giai đoạn 5: cấp độ, khuyến nghị IPM
 │   │   ├── pipeline.py       #   ghép các giai đoạn, chạy thử một ảnh
 │   │   └── models/           #   file model phân loại (.joblib)
-│   ├── dataset/              # ảnh thử và ảnh tô tay — không đưa lên git
+│   ├── dataset/              # ảnh PlantVillage, mask tô tay, ảnh tự chụp — không đưa lên git (trừ splits/*.txt)
+│   ├── experiments/          # script thí nghiệm, đánh giá; hình kết quả ở output/ (không đưa lên git)
 │   ├── media/                # ảnh tải lên (uploads/), ảnh kết quả (results/), ảnh từng bước (steps/) — không đưa lên git
 │   ├── requirements.txt
 │   └── .env.example
