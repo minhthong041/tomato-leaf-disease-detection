@@ -125,7 +125,9 @@ Ngoài ra Django tự tạo 2 bảng phụ `users_groups` và `users_user_permis
 | `is_healthy` | boolean | | `false` | `true` cho lớp lá khỏe (`Tomato___healthy`). Chỉ được có **một** dòng như vậy |
 | `created_at`, `updated_at` | timestamptz | | | |
 
-Danh sách lớp (4–5 lớp bệnh + lớp lá khỏe) do nhóm chốt ở tuần 1, admin thêm trong `/admin/`. Không xóa được một lớp đã có kết quả chẩn đoán dùng tới (`PROTECT`).
+Bảng có sẵn **đủ 10 lớp lá cà chua của PlantVillage** (9 lớp bệnh / sâu hại + lá khỏe), nạp bằng migration [`0004_seed_diseases`](../backend/api/migrations/0004_seed_diseases.py) — tên tiếng Việt và mô tả triệu chứng nằm trong file đó. Sửa tên hay mô tả thì viết migration mới, không sửa migration đã có. Không xóa được một lớp đã có kết quả chẩn đoán dùng tới (`PROTECT`).
+
+Ba lớp **xoăn vàng lá**, **khảm lá** (virus) và **nhện đỏ** (sâu hại) có triệu chứng lan cả lá chứ không thành đốm riêng, nên S% tính theo diện tích đốm có thể không phản ánh đúng mức độ của các lớp này.
 
 ### 2.3. `diagnosis_histories`
 

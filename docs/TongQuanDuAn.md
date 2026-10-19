@@ -76,7 +76,7 @@ Các hệ thống nhận diện bệnh cây trồng phổ biến hiện nay thư
 ---
 
 ## 5. Kế hoạch Thực hiện (Timeline 4 Tuần)
-- **Tuần 1:** Chốt 4-5 lớp bệnh lá cà chua từ PlantVillage; khởi tạo Git repo; thống nhất Input/Output giữa các module.
+- **Tuần 1:** Dùng đủ 10 lớp lá cà chua từ PlantVillage (9 lớp bệnh / sâu hại + lá khỏe); khởi tạo Git repo; thống nhất Input/Output giữa các module.
 - **Tuần 2:** Phát triển độc lập 3 module xử lý ảnh (`preprocessing.py`, `segmentation.py`, `classifier.py`) và dựng giao diện Web cơ bản.
 - **Tuần 3:** Tích hợp toàn bộ Pipeline vào Backend API; kiểm thử và tinh chỉnh ngưỡng màu HSV, kích thước kernel Morphology.
 - **Tuần 4:** Xuất bảng số liệu thực nghiệm, hoàn thiện báo cáo cuối kỳ, slide thuyết trình và chạy thử Demo.

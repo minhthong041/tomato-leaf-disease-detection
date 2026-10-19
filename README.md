@@ -29,7 +29,7 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Khung pipeline và quy ước vào/ra ([docs/pipeline.md](docs/pipeline.md)) | Xong |
 | Thuật toán giai đoạn 1–4 (`backend/image_processing/`) | Chưa làm — mỗi thành viên cài đặt file của mình |
 | Cấp độ 0–4 và khuyến nghị IPM | Xong |
-| Danh sách lớp bệnh (bảng `diseases`) | Chờ nhóm chốt 4–5 lớp |
+| Danh sách lớp bệnh (bảng `diseases`) | Xong — đủ 10 lớp lá cà chua của PlantVillage, nạp bằng migration |
 | API tải ảnh, lịch sử, kết quả | Chưa làm |
 | Giao diện frontend | Có khung: đăng nhập, tải ảnh, kết quả, lịch sử — chờ API |
 
