@@ -22,7 +22,7 @@ function App() {
         color="primary"
         fontWeight="bold"
       >
-        Hệ Thống Chẩn Đoán Bệnh Lá Cây
+        Hệ Thống Chẩn Đoán Bệnh Lá Cà Chua
       </Typography>
 
       {/* Thẻ hiển thị ảnh và kết quả */}
@@ -32,14 +32,14 @@ function App() {
           height="250"
           // Bạn có thể thay bằng link ảnh một chiếc lá thật
           image="https://via.placeholder.com/400x250?text=Chua+co+anh+tai+len"
-          alt="Ảnh lá cây"
+          alt="Ảnh lá cà chua"
         />
         <CardContent>
           <Typography variant="h6" gutterBottom>
             Kết quả phân tích:
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Vui lòng tải lên một bức ảnh lá cây để hệ thống AI xử lý và đưa ra
+            Vui lòng tải lên một bức ảnh lá cà chua để hệ thống AI xử lý và đưa ra
             chẩn đoán.
           </Typography>
         </CardContent>
@@ -53,7 +53,7 @@ function App() {
           size="large"
           startIcon={<CloudUploadIcon />}
         >
-          Tải ảnh lá cây lên
+          Tải ảnh lá cà chua lên
         </Button>
       </Box>
     </Container>

@@ -1,4 +1,4 @@
-# Phát hiện và chẩn đoán bệnh trên lá cây
+# Hệ thống phát hiện, phân loại và đo lường mức độ nghiêm trọng của bệnh trên lá cà chua dựa trên xử lý ảnh số
 
 Đồ án môn **Xử lý ảnh**: chương trình nhận ảnh một chiếc lá, dùng các kỹ thuật xử lý ảnh cổ điển (không dùng học máy) để kết luận lá **khỏe hay bị bệnh**. Nếu lá bị bệnh, chương trình cho biết tỷ lệ diện tích bệnh, mức độ nặng nhẹ và trả về ảnh đã khoanh vùng từng vết bệnh.
 
