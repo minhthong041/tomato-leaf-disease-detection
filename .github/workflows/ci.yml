@@ -23,7 +23,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: leaf_disease_db
+          POSTGRES_DB: tomato_leaf_disease_db
         ports:
           - 5432:5432
         options: >-
@@ -34,7 +34,7 @@ jobs:
 
     # Thay cho backend/.env (file .env không có trên git)
     env:
-      DB_NAME: leaf_disease_db
+      DB_NAME: tomato_leaf_disease_db
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_HOST: localhost

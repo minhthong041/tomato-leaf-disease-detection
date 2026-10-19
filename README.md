@@ -35,7 +35,7 @@
 ## Cấu trúc thư mục
 
 ```
-leaf-disease-detection/
+tomato-leaf-disease-detection/
 ├── backend/
 │   ├── core/               # settings, urls của Django
 │   ├── api/                # model, admin, API, lưu ảnh (images.py)
@@ -80,7 +80,7 @@ Mở `.env` và điền:
 
 ```powershell
 # 3. Tạo database (hoặc tạo bằng pgAdmin)
-psql -U postgres -c "CREATE DATABASE leaf_disease_db;"
+psql -U postgres -c "CREATE DATABASE tomato_leaf_disease_db;"
 
 # 4. Tạo bảng và tài khoản quản trị
 python manage.py migrate

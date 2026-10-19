@@ -1,4 +1,4 @@
-# Schema: leaf_disease_db
+# Schema: tomato_leaf_disease_db
 Database: pgsql
 Tables: 6
 Columns are NOT NULL unless marked nullable.
