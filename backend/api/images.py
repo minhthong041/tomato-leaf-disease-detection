@@ -22,6 +22,10 @@ def diagnosis_processed_path(instance, filename):
     return _uuid_path('results', filename)
 
 
+def diagnosis_step_path(instance, filename):
+    return _uuid_path('steps', filename)
+
+
 def strip_image_metadata(field_file):
     """Trả về bản sao ảnh không còn EXIF (GPS, thiết bị...), giữ đúng chiều xoay."""
     field_file.seek(0)
