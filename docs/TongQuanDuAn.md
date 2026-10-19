@@ -59,7 +59,7 @@ Các hệ thống nhận diện bệnh cây trồng phổ biến hiện nay thư
 ## 3. Kiến trúc Công nghệ (Tech Stack)
 - **Xử lý ảnh & Học máy:** Python 3.10+, OpenCV (`cv2`), NumPy, Scikit-image, Scikit-learn, Matplotlib.
 - **Backend API:** Django REST Framework (hoặc FastAPI).
-- **Frontend UI:** React.js (Vite) + Tailwind CSS.
+- **Frontend UI:** React.js (Vite) + Material UI (MUI).
 - **Quản lý & Triển khai:** Git/GitHub, Docker & Docker Compose.
 
 ---

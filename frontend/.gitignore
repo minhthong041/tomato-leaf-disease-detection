@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Biến môi trường riêng của từng máy (mẫu: .env.example)
+.env
