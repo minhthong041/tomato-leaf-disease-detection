@@ -27,11 +27,14 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Trang quản trị `/admin/` | Xong |
 | Đăng nhập JWT, CORS cho frontend | Xong |
 | Khung pipeline và quy ước vào/ra ([docs/pipeline.md](docs/pipeline.md)) | Xong |
-| Thuật toán giai đoạn 1–4 (`backend/image_processing/`) | Chưa làm — mỗi thành viên cài đặt file của mình |
+| Chia dữ liệu train/test | Xong — 80/20 theo từng lớp ([experiments/split_dataset.py](backend/experiments/split_dataset.py), `dataset/splits/*.txt`); tên thư mục lớp phải trùng `diseases.code` |
+| Giai đoạn 1–3: tiền xử lý, tách lá, tách đốm bệnh | Đang làm — `preprocessing.py`, `segmentation.py` còn là khung |
+| Giai đoạn 4: trích đặc trưng GLCM + Color Moments | Xong |
+| Giai đoạn 4: huấn luyện SVM / Random Forest | Chưa làm |
 | Cấp độ 0–4 và khuyến nghị IPM | Xong |
 | Danh sách lớp bệnh (bảng `diseases`) | Xong — đủ 10 lớp lá cà chua của PlantVillage, nạp bằng migration |
-| API tải ảnh, lịch sử, kết quả | Chưa làm |
-| Giao diện frontend | Có khung: đăng nhập, tải ảnh, kết quả, lịch sử — chờ API |
+| API tải ảnh, lịch sử, kết quả, đánh dấu | Xong — chạy pipeline ngay trong request; khi các giai đoạn còn là khung thì kết quả là `failed` |
+| Giao diện frontend | Có khung: đăng nhập, tải ảnh, kết quả, lịch sử — đã nối API |
 
 ## Công nghệ
 
@@ -140,6 +143,12 @@ npm install                       # trong frontend/, khi package.json thay đổ
 | POST | `/api/auth/login/` | `{"email", "password"}` | `{"access", "refresh"}` |
 | POST | `/api/auth/refresh/` | `{"refresh"}` | Cặp token mới (refresh cũ bị vô hiệu) |
 | POST | `/api/auth/logout/` | `{"refresh"}` | Vô hiệu refresh token |
+| POST | `/api/diagnoses/` | multipart, trường `image` (JPG/PNG, tối đa 10 MB) | Kết quả chẩn đoán, trạng thái `done` hoặc `failed` |
+| GET | `/api/diagnoses/` | | Lịch sử của người đang đăng nhập, mới nhất trước, 20 mục/trang |
+| GET | `/api/diagnoses/:id/` | | Chi tiết một lần chẩn đoán (ảnh từng bước, khuyến nghị IPM) |
+| PATCH | `/api/diagnoses/:id/` | `{"is_bookmarked"}` | Lần chẩn đoán sau khi đánh dấu |
+
+Cấu trúc dữ liệu trả về: [frontend/src/api/diagnoses.js](frontend/src/api/diagnoses.js). Mỗi người chỉ xem được lần chẩn đoán của mình (của người khác trả 404).
 
 Các API khác yêu cầu header `Authorization: Bearer <access token>`. Access token hết hạn sau 30 phút, refresh token sau 7 ngày.
 
