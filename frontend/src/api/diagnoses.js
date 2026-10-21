@@ -1,6 +1,6 @@
 import { api } from './client';
 
-// API chẩn đoán CHƯA có ở backend. Đây là các đường dẫn và dữ liệu giao diện đang chờ:
+// API chẩn đoán ở backend/api/views.py (DiagnosisViewSet). Đường dẫn và dữ liệu trả về:
 //
 // POST /api/diagnoses/        (multipart, trường "image")  -> { id, status: "pending", ... }
 // GET  /api/diagnoses/        -> { count, next, previous, results: [Diagnosis] } (20 mục/trang)
