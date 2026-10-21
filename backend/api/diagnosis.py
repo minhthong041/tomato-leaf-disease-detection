@@ -20,10 +20,23 @@ logger = logging.getLogger(__name__)
 
 # Thông báo cho người dùng khi lỗi do code (không phải do ảnh)
 SYSTEM_ERROR_MESSAGE = 'Hệ thống chưa xử lý được ảnh này. Vui lòng thử lại sau.'
+# Thông báo khi mô hình trả mã bệnh không có trong bảng diseases (nhãn model lệch với diseases.code)
+UNKNOWN_DISEASE_MESSAGE = (
+    'Mô hình trả về loại bệnh "{code}" không có trong danh sách bệnh của hệ thống. '
+    'Vui lòng báo quản trị viên.'
+)
 # Ảnh kết quả và ảnh từng bước lưu dạng PNG để mask không bị nhiễu nén như JPG
 RESULT_IMAGE_EXT = '.png'
 # Số chữ số thập phân của cột decimal(5,4)
 DECIMAL_PLACES = Decimal('0.0001')
+
+
+class UnknownDiseaseError(Exception):
+    """Mã bệnh pipeline trả về không có trong bảng diseases. Thông báo được hiện cho người dùng."""
+
+    def __init__(self, code):
+        self.code = code
+        super().__init__(UNKNOWN_DISEASE_MESSAGE.format(code=code))
 
 
 def decode_image(field_file) -> np.ndarray:
@@ -56,7 +69,8 @@ def to_json(value):
 def save_result(history: DiagnosisHistory, result: pipeline.PipelineResult) -> None:
     disease = Disease.objects.filter(code=result.disease_code).first()
     if disease is None:
-        raise ValueError(f'Mã bệnh {result.disease_code!r} không có trong bảng diseases')
+        # Kiểm tra trước transaction -> chưa ghi file hay dòng nào vào database
+        raise UnknownDiseaseError(result.disease_code)
 
     with transaction.atomic():
         history.status = DiagnosisHistory.Status.DONE
@@ -93,6 +107,10 @@ def run_diagnosis(history: DiagnosisHistory) -> DiagnosisHistory:
         save_result(history, result)
     except pipeline.PipelineError as error:
         # Lỗi do ảnh: báo nguyên văn cho người dùng
+        mark_failed(history, str(error))
+    except UnknownDiseaseError as error:
+        # Lỗi cấu hình (nhãn model lệch bảng diseases): ghi log cho nhóm, báo rõ cho người dùng
+        logger.error('Chẩn đoán #%s: mã bệnh %r không có trong bảng diseases', history.pk, error.code)
         mark_failed(history, str(error))
     except Exception as error:
         # Lỗi do code (NotImplementedError, ValueError sai quy ước...): ghi log đầy đủ

@@ -151,6 +151,11 @@ class DiagnosisApiTests(APITestCase):
         with self.assertLogs('api.diagnosis', 'ERROR'):
             response, _ = self.post_image(make_result(disease_code='Potato___Early_blight'))
         self.assertEqual(response.data['status'], DiagnosisHistory.Status.FAILED)
+        # DEBUG=False (mặc định khi test) vẫn có thông báo cụ thể, không phải câu chung
+        self.assertEqual(
+            response.data['error_message'],
+            diagnosis_service.UNKNOWN_DISEASE_MESSAGE.format(code='Potato___Early_blight'),
+        )
         self.assertIsNone(response.data['severity_level'])
         self.assertEqual(response.data['steps'], [])
 
