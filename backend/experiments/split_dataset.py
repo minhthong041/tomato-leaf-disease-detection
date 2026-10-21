@@ -1,11 +1,22 @@
 """Chia ảnh PlantVillage thành tập train/test theo từng lớp. Phụ trách: Thành viên 1.
 
-Ảnh đặt ở backend/dataset/plantvillage/<tên lớp>/ (tên thư mục = mã lớp PlantVillage = diseases.code).
+Ảnh đặt ở backend/dataset/plantvillage/<tên lớp>/. Tên thư mục phải trùng diseases.code (tên gốc
+PlantVillage raw/color), vì model học nhãn từ tên thư mục. Một số bản PlantVillage trên mạng đã đổi tên
+2 thư mục, cần đổi lại trước khi chạy:
+    Tomato___Spider_mites_Two_spotted_spider_mite -> Tomato___Spider_mites Two-spotted_spider_mite
+    Tomato___Tomato_YellowLeaf__Curl_Virus        -> Tomato___Tomato_Yellow_Leaf_Curl_Virus
+
 Chạy từ thư mục backend/:
     python experiments/split_dataset.py
 Kết quả ghi vào backend/dataset/splits/train.txt và test.txt: mỗi dòng là đường dẫn tương đối
 tính từ backend/dataset/, dùng dấu /, ví dụ plantvillage/Tomato___healthy/abc.JPG.
 Lớp của một ảnh là tên thư mục cha của nó.
+
+Đọc file split bằng read_text(encoding='utf-8').splitlines(), không dùng split(): gần như mọi tên file
+và một tên thư mục có dấu cách.
+
+Kết quả chia phụ thuộc phiên bản scikit-learn (đang ghim trong requirements.txt). Không chạy lại script
+sau khi nâng phiên bản, nếu không cả nhóm sẽ dùng bộ train/test khác với bộ đã commit.
 """
 from pathlib import Path
 
