@@ -79,3 +79,19 @@ class ExtractFeaturesTests(TestCase):
             classifier.extract_features(
                 image, np.full((SIZE // 2, SIZE // 2), 255, np.uint8)
             )
+
+    def test_mask_values_outside_0_255_raise(self):
+        image, mask = make_leaf()
+        with self.assertRaises(ValueError):
+            classifier.extract_features(image, (mask // 255).astype(np.uint8))
+
+    def test_red_hue_across_wrap_point_is_one_cluster(self):
+        # Nửa lá H = 178, nửa lá H = 2: cùng là đỏ, chỉ cách nhau 4 bậc trên vòng Hue
+        hsv = np.full((SIZE, SIZE, 3), (178, 200, 150), np.uint8)
+        hsv[:, SIZE // 2 :, 0] = 2
+        image = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        mask = np.full((SIZE, SIZE), 255, np.uint8)
+        features = dict(
+            zip(classifier.FEATURE_NAMES, classifier.extract_features(image, mask))
+        )
+        self.assertLess(features['h_std'], 5)
