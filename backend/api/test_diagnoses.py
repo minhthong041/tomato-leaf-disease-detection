@@ -3,6 +3,7 @@ import shutil
 import tempfile
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
@@ -22,6 +23,13 @@ from .models import DiagnosisHistory, DiagnosisStep, User
 URL = '/api/diagnoses/'
 SIZE = 32
 MEDIA_ROOT = tempfile.mkdtemp()
+# Lần mã hóa thứ 4 lỗi: ảnh kết quả + 2 ảnh bước đã ghi xuống media trước đó
+FAIL_ON_ENCODE = 4
+
+
+def list_files(media_root, folder):
+    """Các file (kể cả trong thư mục con YYYY/MM) dưới media_root/folder."""
+    return [path for path in Path(media_root, folder).rglob('*') if path.is_file()]
 
 
 def make_upload(fmt='PNG', name='la.png'):
@@ -159,21 +167,39 @@ class DiagnosisApiTests(APITestCase):
         self.assertIsNone(response.data['severity_level'])
         self.assertEqual(response.data['steps'], [])
 
-    def test_steps_rolled_back_when_saving_fails(self):
-        # Lỗi giữa chừng khi lưu ảnh từng bước -> không còn bước nào, không ở trạng thái done
+    def post_image_failing_on_save(self):
+        """Lỗi ở lần mã hóa ảnh thứ FAIL_ON_ENCODE: ảnh kết quả và vài ảnh bước trước đó đã được ghi xuống media."""
         real_encode = diagnosis_service.encode_image
         calls = []
 
         def flaky_encode(image):
             calls.append(1)
-            if len(calls) == 4:
+            if len(calls) == FAIL_ON_ENCODE:
                 raise ValueError('lỗi giả')
             return real_encode(image)
 
         with mock.patch.object(diagnosis_service, 'encode_image', flaky_encode), self.assertLogs('api.diagnosis'):
             response, _ = self.post_image(make_result())
+        self.assertEqual(len(calls), FAIL_ON_ENCODE)
+        return response
+
+    def test_steps_rolled_back_when_saving_fails(self):
+        # Lỗi giữa chừng khi lưu ảnh từng bước -> không còn bước nào, không ở trạng thái done
+        response = self.post_image_failing_on_save()
         self.assertEqual(response.data['status'], DiagnosisHistory.Status.FAILED)
         self.assertFalse(DiagnosisStep.objects.exists())
+
+    def test_no_leftover_files_when_saving_fails(self):
+        # Thư mục media riêng để không lẫn file của các test khác
+        media_root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media_root, ignore_errors=True)
+        with override_settings(MEDIA_ROOT=media_root):
+            response = self.post_image_failing_on_save()
+        self.assertEqual(response.data['status'], DiagnosisHistory.Status.FAILED)
+        self.assertEqual(list_files(media_root, 'results'), [])
+        self.assertEqual(list_files(media_root, 'steps'), [])
+        # Ảnh gốc vẫn giữ để người dùng xem lại lần chẩn đoán lỗi
+        self.assertEqual(len(list_files(media_root, 'uploads')), 1)
 
     def test_missing_image(self):
         response = self.client.post(URL, {}, format='multipart')
