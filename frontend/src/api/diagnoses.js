@@ -2,7 +2,8 @@ import { api } from './client';
 
 // API chẩn đoán ở backend/api/views.py (DiagnosisViewSet). Đường dẫn và dữ liệu trả về:
 //
-// POST /api/diagnoses/        (multipart, trường "image")  -> { id, status: "pending", ... }
+// POST /api/diagnoses/        (multipart, trường "image")  -> Diagnosis, status "done" hoặc "failed"
+//                             (chạy pipeline đồng bộ, trả về khi xử lý xong)
 // GET  /api/diagnoses/        -> { count, next, previous, results: [Diagnosis] } (20 mục/trang)
 // GET  /api/diagnoses/:id/    -> Diagnosis
 // PATCH /api/diagnoses/:id/   { is_bookmarked } -> Diagnosis
