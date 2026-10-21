@@ -1,9 +1,16 @@
 from django.urls import path
+from rest_framework.routers import SimpleRouter
 from rest_framework_simplejwt.views import (
     TokenBlacklistView,
     TokenObtainPairView,
     TokenRefreshView,
 )
+
+from .views import DiagnosisViewSet
+
+router = SimpleRouter()
+# /diagnoses/ và /diagnoses/<id>/ — xem DiagnosisViewSet
+router.register('diagnoses', DiagnosisViewSet, basename='diagnosis')
 
 urlpatterns = [
     # POST {"email", "password"} -> {"access", "refresh"}
@@ -12,4 +19,5 @@ urlpatterns = [
     path('auth/refresh/', TokenRefreshView.as_view(), name='auth-refresh'),
     # POST {"refresh"} -> đăng xuất (đưa refresh token vào blacklist)
     path('auth/logout/', TokenBlacklistView.as_view(), name='auth-logout'),
+    *router.urls,
 ]
