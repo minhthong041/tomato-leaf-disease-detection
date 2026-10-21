@@ -17,7 +17,7 @@ from rest_framework.test import APITestCase
 from image_processing import pipeline, steps
 from image_processing.severity import IPM_RECOMMENDATIONS
 
-from . import diagnosis as diagnosis_service
+from . import services
 from .models import DiagnosisHistory, DiagnosisStep, User
 
 URL = '/api/diagnoses/'
@@ -144,41 +144,41 @@ class DiagnosisApiTests(APITestCase):
     @override_settings(DEBUG=False)
     def test_code_error_hides_details(self):
         # Giai đoạn chưa cài đặt: người dùng chỉ thấy thông báo chung
-        with self.assertLogs('api.diagnosis', 'ERROR'):
+        with self.assertLogs('api.services', 'ERROR'):
             response, _ = self.post_image(side_effect=NotImplementedError('Thành viên 1: cài đặt resize()'))
         self.assertEqual(response.data['status'], DiagnosisHistory.Status.FAILED)
-        self.assertEqual(response.data['error_message'], diagnosis_service.SYSTEM_ERROR_MESSAGE)
+        self.assertEqual(response.data['error_message'], services.SYSTEM_ERROR_MESSAGE)
 
     @override_settings(DEBUG=True)
     def test_code_error_details_in_debug(self):
-        with self.assertLogs('api.diagnosis', 'ERROR'):
+        with self.assertLogs('api.services', 'ERROR'):
             response, _ = self.post_image(side_effect=NotImplementedError('Thành viên 1: cài đặt resize()'))
         self.assertIn('Thành viên 1: cài đặt resize()', response.data['error_message'])
 
     def test_unknown_disease_code_fails_without_partial_result(self):
-        with self.assertLogs('api.diagnosis', 'ERROR'):
+        with self.assertLogs('api.services', 'ERROR'):
             response, _ = self.post_image(make_result(disease_code='Potato___Early_blight'))
         self.assertEqual(response.data['status'], DiagnosisHistory.Status.FAILED)
         # DEBUG=False (mặc định khi test) vẫn có thông báo cụ thể, không phải câu chung
         self.assertEqual(
             response.data['error_message'],
-            diagnosis_service.UNKNOWN_DISEASE_MESSAGE.format(code='Potato___Early_blight'),
+            services.UNKNOWN_DISEASE_MESSAGE.format(code='Potato___Early_blight'),
         )
         self.assertIsNone(response.data['severity_level'])
         self.assertEqual(response.data['steps'], [])
 
     def post_image_failing_on_save(self):
         """Lỗi ở lần mã hóa ảnh thứ FAIL_ON_ENCODE: ảnh kết quả và vài ảnh bước trước đó đã được ghi xuống media."""
-        real_encode = diagnosis_service.encode_image
+        real_to_png_file = services._to_png_file
         calls = []
 
-        def flaky_encode(image):
+        def flaky_to_png_file(image):
             calls.append(1)
             if len(calls) == FAIL_ON_ENCODE:
                 raise ValueError('lỗi giả')
-            return real_encode(image)
+            return real_to_png_file(image)
 
-        with mock.patch.object(diagnosis_service, 'encode_image', flaky_encode), self.assertLogs('api.diagnosis'):
+        with mock.patch.object(services, '_to_png_file', flaky_to_png_file), self.assertLogs('api.services'):
             response, _ = self.post_image(make_result())
         self.assertEqual(len(calls), FAIL_ON_ENCODE)
         return response
@@ -283,5 +283,5 @@ class DiagnosisApiTests(APITestCase):
 
 class ToDecimalTests(APITestCase):
     def test_rounds_to_4_places(self):
-        self.assertEqual(diagnosis_service.to_decimal(0.87654), Decimal('0.8765'))
-        self.assertEqual(diagnosis_service.to_decimal(1.0), Decimal('1.0000'))
+        self.assertEqual(services.to_decimal(0.87654), Decimal('0.8765'))
+        self.assertEqual(services.to_decimal(1.0), Decimal('1.0000'))

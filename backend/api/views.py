@@ -1,7 +1,7 @@
 from rest_framework import mixins, status, viewsets
 from rest_framework.response import Response
 
-from .diagnosis import run_diagnosis
+from .services import run_diagnosis
 from .models import DiagnosisHistory
 from .serializers import DiagnosisCreateSerializer, DiagnosisSerializer
 

@@ -49,7 +49,7 @@ def decode_image(field_file) -> np.ndarray:
     return image
 
 
-def encode_image(image: np.ndarray) -> ContentFile:
+def _to_png_file(image: np.ndarray) -> ContentFile:
     ok, buffer = cv2.imencode(RESULT_IMAGE_EXT, image)
     if not ok:
         raise ValueError(f'Không mã hóa được ảnh {image.dtype} {image.shape}')
@@ -110,11 +110,11 @@ def save_result(history: DiagnosisHistory, result: pipeline.PipelineResult) -> N
             history.infected_ratio = to_decimal(result.infected_ratio)
             history.lesion_count = result.lesion_count
             history.lesions = to_json(result.lesions)
-            history.processed_image = encode_image(result.processed_image)
+            history.processed_image = _to_png_file(result.processed_image)
             save_with_file(history, history.processed_image, saved_files)
             # Lưu theo đúng thứ tự steps.ORDER -> history.steps.all() (sắp theo id) đúng thứ tự hiển thị
             for name, image in result.steps.items():
-                step = DiagnosisStep(history=history, step=name, image=encode_image(image))
+                step = DiagnosisStep(history=history, step=name, image=_to_png_file(image))
                 save_with_file(step, step.image, saved_files)
     except Exception:
         delete_files(saved_files)
