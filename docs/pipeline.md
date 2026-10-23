@@ -6,7 +6,7 @@ Tài liệu này là "hợp đồng" giữa các module trong `backend/image_pro
 
 | File | Giai đoạn | Phụ trách | Trạng thái |
 |---|---|---|---|
-| `preprocessing.py` | 1. Tiền xử lý: resize, khử nhiễu, CLAHE | Thành viên 1 | Khung — cần cài đặt `resize`, `denoise`, `equalize` |
+| `preprocessing.py` | 1. Tiền xử lý: resize, khử nhiễu, CLAHE | Thành viên 1 | Xong |
 | `segmentation.py` | 2. Tách lá khỏi nền · 3. Tách đốm bệnh, đo từng đốm, vẽ contours | Thành viên 2 | Khung — cần cài đặt cả 4 hàm |
 | `classifier.py` | 4. Đặc trưng GLCM + Color Moments, phân loại tên bệnh | Thành viên 3 | Khung — cần cài đặt `extract_features` và huấn luyện model |
 | `severity.py` | 5. Cấp độ 0–4 và khuyến nghị IPM | Thành viên 4 | Xong |
