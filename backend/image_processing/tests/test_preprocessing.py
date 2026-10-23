@@ -6,6 +6,8 @@ import numpy as np
 from image_processing import preprocessing, steps
 
 TARGET_SHAPE = (preprocessing.TARGET_SIZE, preprocessing.TARGET_SIZE, 3)
+# Sai lệch trung bình cho phép của kênh A, B sau equalize (do làm tròn uint8 khi đổi LAB <-> BGR)
+AB_TOLERANCE = 1.0
 
 
 def make_leaf(height=256, width=256):
@@ -64,6 +66,14 @@ class DenoiseEqualizeTests(TestCase):
     def test_equalize_increases_contrast_of_low_contrast_image(self):
         image = make_low_contrast()
         self.assertGreater(lightness_std(preprocessing.equalize(image)), lightness_std(image))
+
+    def test_equalize_only_changes_lightness(self):
+        # CLAHE chỉ chạy trên kênh L: kênh A, B chỉ lệch do làm tròn khi đổi LAB <-> BGR
+        image = make_leaf(*TARGET_SHAPE[:2])
+        before = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.int16)
+        after = cv2.cvtColor(preprocessing.equalize(image), cv2.COLOR_BGR2LAB).astype(np.int16)
+        self.assertFalse(np.array_equal(after[..., 0], before[..., 0]))
+        self.assertLessEqual(np.abs(after[..., 1:] - before[..., 1:]).mean(), AB_TOLERANCE)
 
     def test_denoise_reduces_noise(self):
         image = make_low_contrast()
