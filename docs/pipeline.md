@@ -40,6 +40,7 @@ segment_leaf(image) -> (leaf_mask, {SATURATION, LEAF_MASK})
 segment_lesions(image, leaf_mask) -> (lesion_mask, {ROI, HEALTHY_MASK, LESION_MASK_RAW, LESION_MASK})
 measure_lesions(lesion_mask) -> [{"area", "perimeter", "circularity", "center": [x, y], "bbox": [x, y, w, h]}, ...]
 draw_lesions(image, lesion_mask) -> image   # viền đỏ quanh từng đốm
+process_image(preprocessed_img, original_img=None) -> dict  # kết quả segmentation độc lập
 
 # classifier.py — Thành viên 3
 extract_features(image, leaf_mask) -> np.ndarray   # vector 1 chiều, cùng thứ tự với lúc huấn luyện
@@ -47,6 +48,14 @@ predict(features) -> (disease_code, confidence)    # đã viết sẵn, dùng mo
 ```
 
 `image` truyền vào giai đoạn 2, 3, 4 là ảnh **đã tiền xử lý**.
+
+`process_image` là giao diện tiện ích cho bên gọi độc lập với `pipeline.run()`.
+Dict trả về gồm `mask_leaf`, `mask_healthy`, `mask_lesion`, `contour_img`,
+`area_leaf`, `area_lesion` và `severity_ratio`. Hai diện tích là số pixel mask;
+`severity_ratio` được biểu diễn theo phần trăm (0–100), còn `pipeline.run()`
+giữ `infected_ratio` ở dạng tỷ lệ (0–1). Nếu truyền `original_img`, contour
+được vẽ lên ảnh đó; khi kích thước khác ảnh tiền xử lý, mask được co giãn bằng
+nearest-neighbor trước khi trích contour.
 
 ## 4. Quy tắc pipeline kiểm tra
 
