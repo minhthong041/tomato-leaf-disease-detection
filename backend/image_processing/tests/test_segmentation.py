@@ -3,7 +3,7 @@ from unittest import TestCase
 import cv2
 import numpy as np
 
-from image_processing import segmentation, steps
+from image_processing import errors, segmentation, steps
 
 
 def synthetic_leaf():
@@ -61,6 +61,17 @@ class SegmentationTests(TestCase):
         self.assertEqual(intermediate[steps.HEALTHY_MASK][45, 45], 0)
         self.assertEqual(lesion_mask[45, 45], 0)
 
+    def test_segment_lesions_ignores_dark_green_leaf_region(self):
+        image = np.full((100, 100, 3), 255, dtype=np.uint8)
+        cv2.circle(image, (50, 50), 30, (0, 200, 0), -1)
+        cv2.rectangle(image, (45, 45), (54, 54), (0, 20, 0), -1)
+        leaf_mask, _ = segmentation.segment_leaf(image)
+
+        lesion_mask, _ = segmentation.segment_lesions(image, leaf_mask)
+
+        self.assertEqual(leaf_mask[50, 50], 255)
+        self.assertEqual(lesion_mask[50, 50], 0)
+
     def test_process_image_returns_requested_result_shape(self):
         image = synthetic_leaf()
 
@@ -93,7 +104,7 @@ class SegmentationTests(TestCase):
     def test_process_image_raises_when_no_leaf_is_found(self):
         image = np.full((40, 40, 3), 128, dtype=np.uint8)
 
-        with self.assertRaisesRegex(ValueError, 'Không tìm thấy lá'):
+        with self.assertRaisesRegex(errors.PipelineError, 'Không tìm thấy lá'):
             segmentation.process_image(image)
 
     def test_measure_lesions_empty_mask(self):

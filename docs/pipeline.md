@@ -7,7 +7,7 @@ Tài liệu này là "hợp đồng" giữa các module trong `backend/image_pro
 | File | Giai đoạn | Phụ trách | Trạng thái |
 |---|---|---|---|
 | `preprocessing.py` | 1. Tiền xử lý: resize, khử nhiễu, CLAHE | Thành viên 1 | Xong |
-| `segmentation.py` | 2. Tách lá khỏi nền · 3. Tách đốm bệnh, đo từng đốm, vẽ contours | Thành viên 2 | Hoàn thiện — CIELAB, lọc màu và hình thái đã tối ưu |
+| `segmentation.py` | 2. Tách lá khỏi nền · 3. Tách đốm bệnh, đo từng đốm, vẽ contours | Thành viên 2 | Xong bản đầu, ngưỡng đốm bệnh còn tạm thời |
 | `classifier.py` | 4. Đặc trưng GLCM + Color Moments, phân loại tên bệnh | Thành viên 3 | Khung — cần cài đặt `extract_features` và huấn luyện model |
 | `severity.py` | 5. Cấp độ 0–4 và khuyến nghị IPM | Thành viên 4 | Xong |
 | `pipeline.py` | Ghép 5 giai đoạn, kiểm tra quy ước, chạy thử từ dòng lệnh | Thành viên 4 | Xong |
@@ -53,7 +53,7 @@ predict(features) -> (disease_code, confidence)    # đã viết sẵn, dùng mo
 với `pipeline.run()`. Dict trả về gồm `mask_leaf`, `mask_healthy`,
 `mask_lesion`, `processed_image`, `leaf_area_px`, `lesion_area_px` và
 `infected_ratio`. Hai diện tích là số pixel mask; `infected_ratio` là tỷ lệ
-0–1. Không tìm thấy lá thì hàm ném `ValueError`, tương tự việc pipeline báo
+0–1. Không tìm thấy lá thì hàm ném `PipelineError`, tương tự việc pipeline báo
 lỗi ảnh không chẩn đoán được. Nếu truyền `original_img` có kích thước khác,
 `process_image` resize mask bằng nearest-neighbor trước khi gọi `draw_lesions`;
 hàm vẽ không tự thay đổi kích thước mask.
@@ -79,6 +79,11 @@ bệnh bị coi là nền và `infected_ratio` sai. Tách mô khỏe xét đồn
 Saturation và Value; mô trung tính ít bão hòa không bị tính thành đốm. Opening,
 closing và ngưỡng diện tích thành phần tối thiểu loại nhiễu nhỏ. `lesion_mask`
 luôn là tập con của `leaf_mask`.
+
+*Ghi chú:* Ngưỡng Hue/Saturation/Value dùng để tách đốm bệnh hiện tại là
+ngưỡng tối ưu trên tập huấn luyện (bảo toàn việc nhận diện bệnh xoăn vàng lá -
+Yellow Leaf Curl). Đây là ngưỡng tạm thời và sẽ được tinh chỉnh lại khi có bộ
+mặt nạ đốm bệnh tô tay (ground truth).
 
 ## 5. Kết quả trả về
 

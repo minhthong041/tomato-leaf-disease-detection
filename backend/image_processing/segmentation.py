@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from . import steps
+from .errors import PipelineError
 
 # Tham số morphology và ngưỡng màu (kênh H của OpenCV nằm trong khoảng 0–179).
 LEAF_CLOSE_KSIZE = (5, 5)
@@ -111,6 +112,7 @@ def segment_lesions(
     lesion_candidates = (
         (healthy_mask == 0)
         & (saturation >= LESION_MIN_SATURATION)
+        & (value >= HEALTHY_MIN_VALUE)
         & (leaf_mask > 0)
     )
     lesion_mask_raw = np.where(lesion_candidates, 255, 0).astype(np.uint8)
@@ -212,7 +214,7 @@ def process_image(
     area_leaf = int(cv2.countNonZero(mask_leaf))
     area_lesion = int(cv2.countNonZero(mask_lesion))
     if area_leaf == 0:
-        raise ValueError('Không tìm thấy lá trong ảnh.')
+        raise PipelineError('Không tìm thấy lá trong ảnh')
 
     contour_image = original_img if original_img is not None else preprocessed_img
     drawing_mask = mask_lesion
