@@ -1,0 +1,30 @@
+plantvillage/Tomato___Bacterial_spot/0d56df83-84fb-4189-a5d2-3a6da18a224d___UF.GRC_BS_Lab Leaf 9029.JPG
+plantvillage/Tomato___Bacterial_spot/317e1357-d86b-4bfa-a492-e8bbd461acc7___GCREC_Bact.Sp 6314.JPG
+plantvillage/Tomato___Bacterial_spot/d3235199-bec9-4191-ab79-53797ef23873___GCREC_Bact.Sp 3189.JPG
+plantvillage/Tomato___Early_blight/0ae44a6c-1213-4312-a11b-c7c5d4e585d0___RS_Erly.B 9442.JPG
+plantvillage/Tomato___Early_blight/24379205-969e-4cd0-9232-176c83364d60___RS_Erly.B 7617.JPG
+plantvillage/Tomato___Early_blight/d0b75b16-bdf9-4e9d-bac9-47bf98c6258a___RS_Erly.B 6416.JPG
+plantvillage/Tomato___Late_blight/098f19fb-1064-4c96-9498-70adcd29f5ae___GHLB2 Leaf 8973.JPG
+plantvillage/Tomato___Late_blight/2ac8376a-3401-4572-af45-6984e6415996___GHLB2 Leaf 8787.JPG
+plantvillage/Tomato___Late_blight/dbd66146-54e6-4621-870d-24208b99e254___RS_Late.B 7051.JPG
+plantvillage/Tomato___Leaf_Mold/0b3d5bf2-607f-4f95-bdcd-3542b8bd3244___Crnl_L.Mold 6654.JPG
+plantvillage/Tomato___Leaf_Mold/361dc151-4e5f-498a-8813-98c9e0ec806d___Crnl_L.Mold 6999.JPG
+plantvillage/Tomato___Leaf_Mold/e379328a-4265-470a-978d-5020f59f4c1f___Crnl_L.Mold 6833.JPG
+plantvillage/Tomato___Septoria_leaf_spot/0c8fd2f4-9c26-4e6d-90b5-fae10602579c___Matt.S_CG 1072.JPG
+plantvillage/Tomato___Septoria_leaf_spot/2eb010be-cfb9-40cf-9b69-0521e5ecf2a1___Matt.S_CG 1263.JPG
+plantvillage/Tomato___Septoria_leaf_spot/e9de0604-a1be-42b7-8c6f-f376904c0473___Matt.S_CG 1688.JPG
+plantvillage/Tomato___Spider_mites Two-spotted_spider_mite/08e9a879-8784-4775-aeef-21fbd62dd08e___Com.G_SpM_FL 8513.JPG
+plantvillage/Tomato___Spider_mites Two-spotted_spider_mite/2a70c9e6-2c2f-4355-94fb-02afc8141be5___Com.G_SpM_FL 8877.JPG
+plantvillage/Tomato___Spider_mites Two-spotted_spider_mite/fb5551c8-d45c-4c92-8cd2-c389d4268c54___Com.G_SpM_FL 8827.JPG
+plantvillage/Tomato___Target_Spot/10bbf909-db34-43f1-9a05-eaca805eace2___Com.G_TgS_FL 7997.JPG
+plantvillage/Tomato___Target_Spot/451eda81-5134-4d6c-aa4b-2d0ce9341159___Com.G_TgS_FL 7898.JPG
+plantvillage/Tomato___Target_Spot/8c06b690-c804-4471-873f-e19f84d49fc7___Com.G_TgS_FL 8242.JPG
+plantvillage/Tomato___Tomato_Yellow_Leaf_Curl_Virus/0b115553-d92b-4ecc-a58f-0733b6e57e1f___YLCV_GCREC 5162.JPG
+plantvillage/Tomato___Tomato_Yellow_Leaf_Curl_Virus/34986eb3-fe72-473a-8614-450a85f20c2c___UF.GRC_YLCV_Lab 03072.JPG
+plantvillage/Tomato___Tomato_Yellow_Leaf_Curl_Virus/825d8f5e-ade2-44f8-9303-3073e8b7fe5f___YLCV_NREC 2698.JPG
+plantvillage/Tomato___Tomato_mosaic_virus/0a91f50b-1263-4b2c-a8c1-f2a6025b82f3___PSU_CG 2136.JPG
+plantvillage/Tomato___Tomato_mosaic_virus/3cb6ee9b-8550-4216-bde5-814807add4e5___PSU_CG 2395.JPG
+plantvillage/Tomato___Tomato_mosaic_virus/914cd3f1-e98f-49b3-8223-0a55870362b0___PSU_CG 2259.JPG
+plantvillage/Tomato___healthy/0a205a11-1e64-49f7-93c2-ad59312b4f83___RS_HL 0334.JPG
+plantvillage/Tomato___healthy/2996b910-fc94-43ef-99b3-efc0ae494872___RS_HL 0410.JPG
+plantvillage/Tomato___healthy/6b53630d-c9df-4e67-a490-b1835772d9a0___GH_HL Leaf 450.2.JPG
