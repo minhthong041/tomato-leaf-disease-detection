@@ -9,8 +9,8 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Giai đoạn | Cách làm | Kết quả |
 |---|---|---|
 | 1. Tiền xử lý | Resize 512×512, khử nhiễu Bilateral / Median, CLAHE trên kênh L của CIELAB | Ảnh chuẩn hóa |
-| 2. Tách lá khỏi nền | HSV, phân ngưỡng kênh S (Otsu / `inRange`), closing lấp lỗ | Mask lá, diện tích lá |
-| 3. Tách đốm bệnh | Mask mô lá khỏe theo Hue 35–85, lá trừ mô khỏe, opening + closing, contours | Mask vết bệnh, diện tích và thông số từng đốm |
+| 2. Tách lá khỏi nền | CIELAB, Otsu trên kênh b*, closing, lấp lỗ và thành phần liên thông lớn nhất | Mask lá, diện tích lá |
+| 3. Tách đốm bệnh | Mô khỏe theo Hue (35–85), lọc đốm theo Saturation/Value, hình thái học và diện tích pixel | Mask vết bệnh, diện tích và thông số từng đốm |
 | 4. Phân loại tên bệnh | Đặc trưng GLCM + Color Moments, SVM / Random Forest (PlantVillage, lá cà chua) | Tên bệnh, độ tin cậy |
 | 5. Mức độ nghiêm trọng | S = diện tích bệnh / diện tích lá × 100% | Cấp 0–4, khuyến nghị IPM |
 
@@ -29,7 +29,7 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Khung pipeline và quy ước vào/ra ([docs/pipeline.md](docs/pipeline.md)) | Xong |
 | Chia dữ liệu train/test | Xong — 80/20 theo từng lớp ([experiments/split_dataset.py](backend/experiments/split_dataset.py), `dataset/splits/*.txt`); tên thư mục lớp phải trùng `diseases.code` |
 | Giai đoạn 1: tiền xử lý (resize, Bilateral, CLAHE) | Xong |
-| Giai đoạn 2–3: tách lá, tách đốm bệnh | Đang làm — `segmentation.py` còn là khung |
+| Giai đoạn 2–3: tách lá, tách đốm bệnh | Xong bản đầu, ngưỡng đốm bệnh còn tạm thời |
 | Giai đoạn 4: trích đặc trưng GLCM + Color Moments | Xong |
 | Giai đoạn 4: huấn luyện SVM / Random Forest | Chưa làm |
 | Cấp độ 0–4 và khuyến nghị IPM | Xong |

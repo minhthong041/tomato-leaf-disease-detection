@@ -12,10 +12,7 @@ import cv2
 import numpy as np
 
 from . import classifier, preprocessing, segmentation, severity, steps
-
-
-class PipelineError(Exception):
-    """Ảnh không chẩn đoán được (ví dụ không tìm thấy lá). Thông báo lưu vào error_message cho người dùng xem."""
+from .errors import PipelineError
 
 
 @dataclass
