@@ -7,7 +7,7 @@ Tài liệu này là "hợp đồng" giữa các module trong `backend/image_pro
 | File | Giai đoạn | Phụ trách | Trạng thái |
 |---|---|---|---|
 | `preprocessing.py` | 1. Tiền xử lý: resize, khử nhiễu, CLAHE | Thành viên 1 | Xong |
-| `segmentation.py` | 2. Tách lá khỏi nền · 3. Tách đốm bệnh, đo từng đốm, vẽ contours | Thành viên 2 | Khung — cần cài đặt cả 4 hàm |
+| `segmentation.py` | 2. Tách lá khỏi nền · 3. Tách đốm bệnh, đo từng đốm, vẽ contours | Thành viên 2 | Hoàn thiện — CIELAB, lọc màu và hình thái đã tối ưu |
 | `classifier.py` | 4. Đặc trưng GLCM + Color Moments, phân loại tên bệnh | Thành viên 3 | Khung — cần cài đặt `extract_features` và huấn luyện model |
 | `severity.py` | 5. Cấp độ 0–4 và khuyến nghị IPM | Thành viên 4 | Xong |
 | `pipeline.py` | Ghép 5 giai đoạn, kiểm tra quy ước, chạy thử từ dòng lệnh | Thành viên 4 | Xong |
@@ -49,13 +49,14 @@ predict(features) -> (disease_code, confidence)    # đã viết sẵn, dùng mo
 
 `image` truyền vào giai đoạn 2, 3, 4 là ảnh **đã tiền xử lý**.
 
-`process_image` là giao diện tiện ích cho bên gọi độc lập với `pipeline.run()`.
-Dict trả về gồm `mask_leaf`, `mask_healthy`, `mask_lesion`, `contour_img`,
-`area_leaf`, `area_lesion` và `severity_ratio`. Hai diện tích là số pixel mask;
-`severity_ratio` được biểu diễn theo phần trăm (0–100), còn `pipeline.run()`
-giữ `infected_ratio` ở dạng tỷ lệ (0–1). Nếu truyền `original_img`, contour
-được vẽ lên ảnh đó; khi kích thước khác ảnh tiền xử lý, mask được co giãn bằng
-nearest-neighbor trước khi trích contour.
+`process_image` là giao diện tiện ích độc lập, dùng cùng tên trường và đơn vị
+với `pipeline.run()`. Dict trả về gồm `mask_leaf`, `mask_healthy`,
+`mask_lesion`, `processed_image`, `leaf_area_px`, `lesion_area_px` và
+`infected_ratio`. Hai diện tích là số pixel mask; `infected_ratio` là tỷ lệ
+0–1. Không tìm thấy lá thì hàm ném `ValueError`, tương tự việc pipeline báo
+lỗi ảnh không chẩn đoán được. Nếu truyền `original_img` có kích thước khác,
+`process_image` resize mask bằng nearest-neighbor trước khi gọi `draw_lesions`;
+hàm vẽ không tự thay đổi kích thước mask.
 
 ## 4. Quy tắc pipeline kiểm tra
 
@@ -70,7 +71,14 @@ nearest-neighbor trước khi trích contour.
 
 `PipelineError` là lỗi do **ảnh** (người dùng gửi ảnh không phải lá, ảnh hỏng…): thông báo tiếng Việt, lưu vào `diagnosis_histories.error_message`. `ValueError` / `NotImplementedError` là lỗi do **code**.
 
-**Leaf mask phải gồm cả vùng vết bệnh.** Vết bệnh màu nâu/vàng có độ bão hòa khác lá xanh; nếu tách lá chỉ giữ vùng xanh thì vết bệnh bị coi là nền và `infected_ratio` sai. Closing / lấp lỗ (fill holes) sau khi phân ngưỡng giúp giữ các vết bệnh bên trong lá.
+**Leaf mask phải gồm cả vùng vết bệnh.** Segmentation dùng Otsu trên kênh
+`b*` của CIELAB (ngưỡng thường để lấy lá xanh có b* cao hơn nền trung tính), sau đó closing
+kernel elip 5×5, lấp lỗ và giữ thành phần liên thông lớn nhất. Vết bệnh màu
+nâu/vàng có độ bão hòa khác lá xanh; nếu tách lá chỉ giữ vùng xanh thì vết
+bệnh bị coi là nền và `infected_ratio` sai. Tách mô khỏe xét đồng thời Hue,
+Saturation và Value; mô trung tính ít bão hòa không bị tính thành đốm. Opening,
+closing và ngưỡng diện tích thành phần tối thiểu loại nhiễu nhỏ. `lesion_mask`
+luôn là tập con của `leaf_mask`.
 
 ## 5. Kết quả trả về
 

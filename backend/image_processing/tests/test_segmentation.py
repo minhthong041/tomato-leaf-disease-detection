@@ -25,6 +25,17 @@ class SegmentationTests(TestCase):
         self.assertEqual(set(intermediate), {steps.SATURATION, steps.LEAF_MASK})
         self.assertEqual(leaf_mask[50, 50], 255)
 
+    def test_segment_leaf_finds_low_saturation_green_leaf(self):
+        image = np.full((100, 100, 3), 245, dtype=np.uint8)
+        cv2.circle(image, (50, 50), 30, (105, 125, 110), -1)
+
+        leaf_mask, _ = segmentation.segment_leaf(image)
+        lesion_mask, _ = segmentation.segment_lesions(image, leaf_mask)
+
+        self.assertEqual(leaf_mask[50, 50], 255)
+        self.assertGreater(cv2.countNonZero(leaf_mask), 2500)
+        self.assertEqual(cv2.countNonZero(lesion_mask), 0)
+
     def test_segment_lesions_stays_inside_leaf(self):
         image = synthetic_leaf()
         leaf_mask, _ = segmentation.segment_leaf(image)
@@ -40,6 +51,16 @@ class SegmentationTests(TestCase):
         )
         self.assertEqual(intermediate[steps.HEALTHY_MASK][50, 50], 0)
 
+    def test_segment_lesions_ignores_neutral_gray_region(self):
+        image = synthetic_leaf()
+        cv2.rectangle(image, (42, 43), (47, 48), (145, 145, 145), -1)
+        leaf_mask, _ = segmentation.segment_leaf(image)
+
+        lesion_mask, intermediate = segmentation.segment_lesions(image, leaf_mask)
+
+        self.assertEqual(intermediate[steps.HEALTHY_MASK][45, 45], 0)
+        self.assertEqual(lesion_mask[45, 45], 0)
+
     def test_process_image_returns_requested_result_shape(self):
         image = synthetic_leaf()
 
@@ -48,17 +69,17 @@ class SegmentationTests(TestCase):
         self.assertEqual(
             set(result),
             {
-                'mask_leaf', 'mask_healthy', 'mask_lesion', 'contour_img',
-                'area_leaf', 'area_lesion', 'severity_ratio',
+                'mask_leaf', 'mask_healthy', 'mask_lesion', 'processed_image',
+                'leaf_area_px', 'lesion_area_px', 'infected_ratio',
             },
         )
-        self.assertEqual(result['area_leaf'], cv2.countNonZero(result['mask_leaf']))
-        self.assertEqual(result['area_lesion'], cv2.countNonZero(result['mask_lesion']))
+        self.assertEqual(result['leaf_area_px'], cv2.countNonZero(result['mask_leaf']))
+        self.assertEqual(result['lesion_area_px'], cv2.countNonZero(result['mask_lesion']))
         self.assertAlmostEqual(
-            result['severity_ratio'],
-            result['area_lesion'] / result['area_leaf'] * 100,
+            result['infected_ratio'],
+            result['lesion_area_px'] / result['leaf_area_px'],
         )
-        self.assertEqual(result['contour_img'].shape, image.shape)
+        self.assertEqual(result['processed_image'].shape, image.shape)
 
     def test_process_image_draws_on_original_resolution(self):
         image = synthetic_leaf()
@@ -66,13 +87,36 @@ class SegmentationTests(TestCase):
 
         result = segmentation.process_image(image, original)
 
-        self.assertEqual(result['contour_img'].shape, original.shape)
-        self.assertFalse(np.array_equal(result['contour_img'], original))
+        self.assertEqual(result['processed_image'].shape, original.shape)
+        self.assertFalse(np.array_equal(result['processed_image'], original))
+
+    def test_process_image_raises_when_no_leaf_is_found(self):
+        image = np.full((40, 40, 3), 128, dtype=np.uint8)
+
+        with self.assertRaisesRegex(ValueError, 'Không tìm thấy lá'):
+            segmentation.process_image(image)
 
     def test_measure_lesions_empty_mask(self):
         empty = np.zeros((20, 20), dtype=np.uint8)
 
         self.assertEqual(segmentation.measure_lesions(empty), [])
+
+    def test_measure_lesions_uses_exact_pixel_area(self):
+        mask = np.zeros((20, 20), dtype=np.uint8)
+        mask[2:5, 3:6] = 255
+        mask[10, 10] = 255
+
+        lesions = segmentation.measure_lesions(mask)
+
+        self.assertEqual(sorted(lesion['area'] for lesion in lesions), [1, 9])
+        self.assertEqual(sum(lesion['area'] for lesion in lesions), cv2.countNonZero(mask))
+
+    def test_draw_lesions_rejects_mask_with_different_resolution(self):
+        image = np.zeros((20, 20, 3), dtype=np.uint8)
+        mask = np.zeros((10, 10), dtype=np.uint8)
+
+        with self.assertRaisesRegex(ValueError, 'shape'):
+            segmentation.draw_lesions(image, mask)
 
     def test_invalid_leaf_mask_is_rejected(self):
         image = synthetic_leaf()
