@@ -56,6 +56,53 @@ class SegmentationTests(TestCase):
         self.assertEqual(set(intermediate), {steps.SATURATION, steps.LEAF_MASK})
         self.assertEqual(leaf_mask[50, 50], 255)
 
+    def test_segment_leaf_fills_necrosis_and_shadow_holes(self):
+        image = np.full((140, 140, 3), 255, dtype=np.uint8)
+        cv2.ellipse(image, (70, 70), (55, 45), 0, 0, 360, (0, 200, 0), -1)
+        cv2.circle(image, (50, 60), 10, (0, 190, 255), -1)
+        cv2.circle(image, (85, 60), 10, (0, 70, 120), -1)
+        cv2.circle(image, (70, 85), 10, (35, 35, 35), -1)
+
+        leaf_mask, intermediate = segmentation.segment_leaf(image)
+
+        self.assertEqual(leaf_mask[60, 50], 255)
+        self.assertEqual(leaf_mask[60, 85], 255)
+        self.assertEqual(leaf_mask[85, 70], 255)
+        self.assertEqual(leaf_mask[10, 10], 0)
+        self.assertEqual(set(np.unique(leaf_mask)), {0, 255})
+        self.assertIs(intermediate[steps.LEAF_MASK], leaf_mask)
+
+    def test_segment_leaf_keeps_adjacent_dark_folded_leaf_region(self):
+        image = np.full((140, 140, 3), 255, dtype=np.uint8)
+        cv2.ellipse(image, (55, 70), (28, 25), 0, 0, 360, (0, 200, 0), -1)
+        cv2.ellipse(image, (83, 70), (8, 12), 0, 0, 360, (35, 35, 35), -1)
+
+        leaf_mask, _ = segmentation.segment_leaf(image)
+
+        self.assertEqual(leaf_mask[70, 83], 255)
+        self.assertEqual(leaf_mask[70, 95], 0)
+        self.assertEqual(leaf_mask[10, 10], 0)
+
+    def test_segment_leaf_rejects_saturated_purple_background(self):
+        image = np.full((120, 120, 3), (145, 110, 160), dtype=np.uint8)
+        cv2.ellipse(image, (60, 60), (35, 25), 0, 0, 360, (0, 190, 0), -1)
+
+        leaf_mask, _ = segmentation.segment_leaf(image)
+
+        self.assertEqual(leaf_mask[60, 60], 255)
+        self.assertEqual(leaf_mask[5, 5], 0)
+        self.assertLess(cv2.countNonZero(leaf_mask), 3500)
+
+    def test_segment_leaf_includes_brown_necrosis_at_leaf_edge(self):
+        image = np.full((120, 120, 3), 255, dtype=np.uint8)
+        cv2.ellipse(image, (50, 60), (35, 25), 0, 0, 360, (0, 190, 0), -1)
+        cv2.ellipse(image, (81, 60), (10, 8), 0, 0, 360, (0, 70, 120), -1)
+
+        leaf_mask, _ = segmentation.segment_leaf(image)
+
+        self.assertEqual(leaf_mask[60, 88], 255)
+        self.assertEqual(leaf_mask[5, 5], 0)
+
     def test_segment_leaf_finds_low_saturation_green_leaf(self):
         image = np.full((100, 100, 3), 245, dtype=np.uint8)
         cv2.circle(image, (50, 50), 30, (105, 125, 110), -1)

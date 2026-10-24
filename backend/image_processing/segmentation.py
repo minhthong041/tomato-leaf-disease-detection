@@ -14,7 +14,17 @@ from . import steps
 from .errors import PipelineError
 
 # Tham số morphology và ngưỡng màu (kênh H của OpenCV nằm trong khoảng 0–179).
-LEAF_CLOSE_KSIZE = (5, 5)
+LEAF_CLOSE_KSIZE = (9, 9)
+LEAF_HUE_RANGE = (15, 100)
+LEAF_MIN_SATURATION = 20
+LEAF_WARM_HUE_MAX = 25
+LEAF_WARM_MIN_SATURATION = 50
+LEAF_WARM_MIN_VALUE = 30
+LEAF_WARM_MAX_VALUE = 170
+LEAF_WARM_CONTEXT_KSIZE = (9, 9)
+LEAF_SHADOW_MAX_SATURATION = 30
+LEAF_SHADOW_MAX_VALUE = 120
+LEAF_SHADOW_CONTEXT_KSIZE = (21, 21)
 LESION_OPEN_KSIZE = (3, 3)
 LESION_CLOSE_KSIZE = (5, 5)
 HEALTHY_HUE_RANGE = (35, 85)
@@ -40,44 +50,63 @@ def _validate_mask(mask: np.ndarray, shape: tuple[int, int], name: str) -> None:
         raise ValueError(f'{name} chỉ được chứa giá trị 0 và 255')
 
 
-def _fill_holes(mask: np.ndarray) -> np.ndarray:
-    """Lấp các vùng nền khép kín bên trong mask nhị phân."""
-    padded = np.pad(mask, 1, mode='constant', constant_values=0)
-    cv2.floodFill(padded, None, (0, 0), 255)
-    holes = cv2.bitwise_not(padded)[1:-1, 1:-1]
-    return cv2.bitwise_or(mask, holes)
-
-
 def _largest_component(mask: np.ndarray) -> np.ndarray:
-    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    if count <= 1:
+    """Giữ contour ngoài lớn nhất và tô kín toàn bộ vùng bên trong."""
+    contours, _ = cv2.findContours(
+        mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
+    )
+    if not contours:
         return np.zeros_like(mask)
-    largest_label = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    return np.where(labels == largest_label, 255, 0).astype(np.uint8)
+    largest_contour = max(contours, key=cv2.contourArea)
+    filled = np.zeros_like(mask)
+    cv2.drawContours(filled, [largest_contour], -1, 255, thickness=cv2.FILLED)
+    return filled
 
 
 def segment_leaf(image: np.ndarray) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-    """Tách toàn bộ phiến lá bằng Otsu trên kênh b* CIELAB.
+    """Tách toàn bộ phiến lá bằng ngưỡng hue và saturation của HSV.
 
-    Dùng ngưỡng thường vì lá xanh thường có giá trị b* cao hơn nền trung tính.
-    Closing và lấp lỗ giữ liền các vùng lá, kể cả phần có màu đốm bệnh.
+    Giới hạn hue trong dải xanh-vàng để không nhận nhầm nền tím/xám bão hòa.
+    Closing nối các vùng ứng viên; tô contour ngoài lớn nhất để lấp kín vùng
+    bệnh và bóng tối bên trong phiến lá.
     Ảnh ``SATURATION`` vẫn được trả về để tương thích thứ tự bước pipeline.
     """
     _validate_image(image)
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     saturation = hsv[:, :, 1]
-    lab_img = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-    lab_b = lab_img[:, :, 2]
-    if int(lab_b.min()) == int(lab_b.max()):
-        leaf_mask = np.zeros_like(lab_b)
-    else:
-        _, leaf_mask = cv2.threshold(
-            lab_b, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU,
-        )
+    leaf_pixels = (
+        (hsv[:, :, 0] >= LEAF_HUE_RANGE[0])
+        & (hsv[:, :, 0] <= LEAF_HUE_RANGE[1])
+        & (saturation >= LEAF_MIN_SATURATION)
+    )
+    leaf_mask = np.where(leaf_pixels, 255, 0).astype(np.uint8)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, LEAF_CLOSE_KSIZE)
     leaf_mask = cv2.morphologyEx(leaf_mask, cv2.MORPH_CLOSE, kernel)
-    leaf_mask = _fill_holes(leaf_mask)
+    warm_leaf_context = cv2.dilate(
+        leaf_mask,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, LEAF_WARM_CONTEXT_KSIZE),
+    )
+    warm_lesions = (
+        (hsv[:, :, 0] <= LEAF_WARM_HUE_MAX)
+        & (saturation >= LEAF_WARM_MIN_SATURATION)
+        & (hsv[:, :, 2] <= LEAF_WARM_MAX_VALUE)
+        & (hsv[:, :, 2] >= LEAF_WARM_MIN_VALUE)
+    )
+    leaf_mask[
+        warm_lesions & (warm_leaf_context > 0)
+    ] = 255
+    shadow_mask = np.where(
+        (saturation <= LEAF_SHADOW_MAX_SATURATION)
+        & (hsv[:, :, 2] <= LEAF_SHADOW_MAX_VALUE),
+        255, 0,
+    ).astype(np.uint8)
+    shadow_context = cv2.dilate(
+        leaf_mask,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, LEAF_SHADOW_CONTEXT_KSIZE),
+    )
+    leaf_mask[(shadow_mask > 0) & (shadow_context > 0)] = 255
+    leaf_mask = cv2.morphologyEx(leaf_mask, cv2.MORPH_CLOSE, kernel)
     leaf_mask = _largest_component(leaf_mask)
 
     return leaf_mask, {
