@@ -80,10 +80,15 @@ Saturation và Value; mô trung tính ít bão hòa không bị tính thành đ�
 closing và ngưỡng diện tích thành phần tối thiểu loại nhiễu nhỏ. `lesion_mask`
 luôn là tập con của `leaf_mask`.
 
-*Ghi chú:* Ngưỡng Hue/Saturation/Value dùng để tách đốm bệnh hiện tại là
-ngưỡng tối ưu trên tập huấn luyện (bảo toàn việc nhận diện bệnh xoăn vàng lá -
-Yellow Leaf Curl). Đây là ngưỡng tạm thời và sẽ được tinh chỉnh lại khi có bộ
-mặt nạ đốm bệnh tô tay (ground truth).
+*Ghi chú:* Ngưỡng Hue/Saturation/Value đốm bệnh được lựa chọn trên tập huấn
+luyện (train) theo tiêu chí tối ưu tỷ lệ lá khỏe bị xếp cấp >= 2 thấp nhất và
+không làm giảm tỷ lệ nhận diện bệnh xoăn vàng lá (Yellow Leaf Curl). Đây là
+ngưỡng tạm thời cho đến khi có bộ mask đốm bệnh tô tay (ground truth).
+
+### Giới hạn đã biết (Known Limitations)
+
+Do có thêm ngưỡng Saturation/Value tối thiểu để lọc bóng lá, các đốm bệnh có
+màu đốm đen tối hoặc xám sâu bên trong phiến lá chưa được tính là vết bệnh.
 
 ## 5. Kết quả trả về
 

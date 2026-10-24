@@ -13,7 +13,38 @@ def synthetic_leaf():
     return image
 
 
+def synthetic_leaf_with_lesions():
+    image = np.full((160, 160, 3), 255, dtype=np.uint8)
+    cv2.ellipse(image, (80, 80), (60, 50), 0, 0, 360, (0, 200, 0), -1)
+    for center in ((45, 65), (115, 65), (80, 110)):
+        cv2.circle(image, center, 7, (0, 80, 140), -1)
+    return image
+
+
 class SegmentationTests(TestCase):
+    def test_segment_leaf_returns_empty_mask_for_white_image(self):
+        image = np.full((100, 100, 3), 255, dtype=np.uint8)
+
+        leaf_mask, _ = segmentation.segment_leaf(image)
+
+        self.assertEqual(cv2.countNonZero(leaf_mask), 0)
+
+    def test_segment_leaf_area_matches_theoretical_ellipse_area(self):
+        image = np.full((180, 180, 3), 255, dtype=np.uint8)
+        axis_a, axis_b = 70, 50
+        cv2.ellipse(
+            image, (90, 90), (axis_a, axis_b), 0, 0, 360, (0, 200, 0), -1,
+        )
+
+        leaf_mask, _ = segmentation.segment_leaf(image)
+        actual_area = cv2.countNonZero(leaf_mask)
+        theoretical_area = np.pi * axis_a * axis_b
+
+        self.assertLessEqual(
+            abs(actual_area - theoretical_area) / theoretical_area,
+            0.02,
+        )
+
     def test_segment_leaf_includes_interior_lesion(self):
         image = synthetic_leaf()
 
@@ -50,6 +81,17 @@ class SegmentationTests(TestCase):
             {steps.ROI, steps.HEALTHY_MASK, steps.LESION_MASK_RAW, steps.LESION_MASK},
         )
         self.assertEqual(intermediate[steps.HEALTHY_MASK][50, 50], 0)
+
+    def test_segment_lesions_detects_three_brown_spots(self):
+        image = synthetic_leaf_with_lesions()
+        leaf_mask, _ = segmentation.segment_leaf(image)
+
+        lesion_mask, _ = segmentation.segment_lesions(image, leaf_mask)
+        lesions = segmentation.measure_lesions(lesion_mask)
+
+        self.assertEqual(len(lesions), 3)
+        self.assertTrue(np.all((lesion_mask > 0) <= (leaf_mask > 0)))
+        self.assertTrue(all(lesion['circularity'] <= 1.0 for lesion in lesions))
 
     def test_segment_lesions_ignores_neutral_gray_region(self):
         image = synthetic_leaf()
@@ -121,6 +163,15 @@ class SegmentationTests(TestCase):
 
         self.assertEqual(sorted(lesion['area'] for lesion in lesions), [1, 9])
         self.assertEqual(sum(lesion['area'] for lesion in lesions), cv2.countNonZero(mask))
+
+    def test_measure_lesions_circle_has_high_circularity(self):
+        mask = np.zeros((60, 60), dtype=np.uint8)
+        cv2.circle(mask, (30, 30), 20, 255, -1)
+
+        lesions = segmentation.measure_lesions(mask)
+
+        self.assertEqual(len(lesions), 1)
+        self.assertGreater(lesions[0]['circularity'], 0.85)
 
     def test_draw_lesions_rejects_mask_with_different_resolution(self):
         image = np.zeros((20, 20, 3), dtype=np.uint8)

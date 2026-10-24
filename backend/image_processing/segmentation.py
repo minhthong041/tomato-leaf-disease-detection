@@ -139,12 +139,15 @@ def segment_lesions(
     }
 
 
-def measure_lesions(lesion_mask: np.ndarray) -> list[dict]:
+def measure_lesions(
+    lesion_mask: np.ndarray,
+) -> list[dict[str, int | float | list[int]]]:
     """Đo từng thành phần liên thông bằng diện tích pixel chính xác.
 
     ``area`` là số pixel thực thuộc đốm; chu vi và circularity được đo từ
     contour tương ứng. Tâm và bounding box dùng tọa độ ``[x, y]`` và
-    ``[x, y, w, h]``.
+    ``[x, y, w, h]``. Với các đốm rất nhỏ (vài chục pixel), chỉ số
+    circularity chỉ mang tính chất tham khảo.
     """
     if not isinstance(lesion_mask, np.ndarray) or lesion_mask.ndim != 2:
         raise ValueError('lesion_mask phải là ảnh xám 2 chiều')
@@ -172,7 +175,10 @@ def measure_lesions(lesion_mask: np.ndarray) -> list[dict]:
         y = int(stats[label, cv2.CC_STAT_TOP])
         width = int(stats[label, cv2.CC_STAT_WIDTH])
         height = int(stats[label, cv2.CC_STAT_HEIGHT])
-        circularity = (4 * np.pi * area / perimeter ** 2) if perimeter else 0.0
+        circularity = (
+            min(1.0, float(4 * np.pi * area / (perimeter ** 2)))
+            if perimeter > 0 else 0.0
+        )
         lesions.append({
             'area': area,
             'perimeter': perimeter,
