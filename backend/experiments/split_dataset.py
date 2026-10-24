@@ -5,6 +5,8 @@ PlantVillage raw/color), vì model học nhãn từ tên thư mục. Một số 
 2 thư mục, cần đổi lại trước khi chạy:
     Tomato___Spider_mites_Two_spotted_spider_mite -> Tomato___Spider_mites Two-spotted_spider_mite
     Tomato___Tomato_YellowLeaf__Curl_Virus        -> Tomato___Tomato_Yellow_Leaf_Curl_Virus
+Có bản còn bị thiếu ảnh (lớp Yellow_Leaf_Curl_Virus chỉ còn 3.208 trong 5.357 ảnh). Bản đủ có
+18.160 ảnh; dòng Tổng mà script in ra phải khớp con số này.
 
 Chạy từ thư mục backend/:
     python experiments/split_dataset.py
