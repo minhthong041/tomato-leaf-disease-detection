@@ -9,7 +9,7 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Giai đoạn | Cách làm | Kết quả |
 |---|---|---|
 | 1. Tiền xử lý | Resize 512×512, khử nhiễu Bilateral / Median, CLAHE trên kênh L của CIELAB | Ảnh chuẩn hóa |
-| 2. Tách lá khỏi nền | CIELAB, Otsu trên kênh b*, closing, lấp lỗ và thành phần liên thông lớn nhất | Mask lá, diện tích lá |
+| 2. Tách lá khỏi nền | HSV, ngưỡng Hue/Saturation, closing 5×5 một lần, tô contour ngoài lớn nhất | Mask lá, diện tích lá |
 | 3. Tách đốm bệnh | Mô khỏe theo Hue (35–85), lọc đốm theo Saturation/Value, hình thái học và diện tích pixel | Mask vết bệnh, diện tích và thông số từng đốm |
 | 4. Phân loại tên bệnh | Đặc trưng GLCM + Color Moments, SVM / Random Forest (PlantVillage, lá cà chua) | Tên bệnh, độ tin cậy |
 | 5. Mức độ nghiêm trọng | S = diện tích bệnh / diện tích lá × 100% | Cấp 0–4, khuyến nghị IPM |
@@ -58,7 +58,7 @@ tomato-leaf-disease-detection/
 │   │   ├── pipeline.py       #   ghép các giai đoạn, chạy thử một ảnh
 │   │   └── models/           #   file model phân loại (.joblib)
 │   ├── dataset/              # ảnh PlantVillage, mask tô tay, ảnh tự chụp — không đưa lên git (trừ splits/*.txt)
-│   ├── experiments/          # script thí nghiệm, đánh giá; hình kết quả ở output/ (không đưa lên git)
+│   ├── experiments/          # script thí nghiệm, đánh giá, xem segmentation; output/ không đưa lên git
 │   ├── media/                # ảnh tải lên (uploads/), ảnh kết quả (results/), ảnh từng bước (steps/) — không đưa lên git
 │   ├── requirements.txt
 │   └── .env.example

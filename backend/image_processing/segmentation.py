@@ -14,17 +14,15 @@ from . import steps
 from .errors import PipelineError
 
 # Tham số morphology và ngưỡng màu (kênh H của OpenCV nằm trong khoảng 0–179).
-LEAF_CLOSE_KSIZE = (9, 9)
-LEAF_HUE_RANGE = (15, 100)
-LEAF_MIN_SATURATION = 20
-LEAF_WARM_HUE_MAX = 25
+LEAF_CLOSE_KSIZE = (5, 5)
+LEAF_GREEN_LOWER = (25, 40, 30)
+LEAF_GREEN_UPPER = (95, 255, 255)
+LEAF_GRABCUT_FG_RADIUS = 40
+LEAF_GRABCUT_BG_RADIUS = 65
+LEAF_GRABCUT_ITERATIONS = 5
+LEAF_WARM_EDGE_RESTORE_RADIUS = 20
 LEAF_WARM_MIN_SATURATION = 50
-LEAF_WARM_MIN_VALUE = 30
-LEAF_WARM_MAX_VALUE = 170
-LEAF_WARM_CONTEXT_KSIZE = (9, 9)
-LEAF_SHADOW_MAX_SATURATION = 30
-LEAF_SHADOW_MAX_VALUE = 120
-LEAF_SHADOW_CONTEXT_KSIZE = (21, 21)
+LEAF_WARM_MIN_VALUE = 40
 LESION_OPEN_KSIZE = (3, 3)
 LESION_CLOSE_KSIZE = (5, 5)
 HEALTHY_HUE_RANGE = (35, 85)
@@ -50,64 +48,100 @@ def _validate_mask(mask: np.ndarray, shape: tuple[int, int], name: str) -> None:
         raise ValueError(f'{name} chỉ được chứa giá trị 0 và 255')
 
 
-def _largest_component(mask: np.ndarray) -> np.ndarray:
-    """Giữ contour ngoài lớn nhất và tô kín toàn bộ vùng bên trong."""
+def _fill_largest_contour(mask: np.ndarray) -> np.ndarray:
+    """Tô kín contour ngoài lớn và giữ các mảnh lá đáng kể."""
     contours, _ = cv2.findContours(
         mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
     )
     if not contours:
         return np.zeros_like(mask)
-    largest_contour = max(contours, key=cv2.contourArea)
+
+    max_area = max(cv2.contourArea(contour) for contour in contours)
     filled = np.zeros_like(mask)
-    cv2.drawContours(filled, [largest_contour], -1, 255, thickness=cv2.FILLED)
+    for contour in contours:
+        if cv2.contourArea(contour) >= 0.03 * max_area:
+            cv2.drawContours(
+                filled, [contour], -1, 255, thickness=cv2.FILLED,
+            )
     return filled
 
 
-def segment_leaf(image: np.ndarray) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-    """Tách toàn bộ phiến lá bằng ngưỡng hue và saturation của HSV.
+def _refine_leaf_mask(
+    image: np.ndarray, hsv: np.ndarray, green_mask: np.ndarray,
+) -> np.ndarray:
+    """Recover folded tissue near green pixels while classifying nearby shadows."""
+    if min(image.shape[:2]) < 2 or cv2.countNonZero(green_mask) == 0:
+        return green_mask
 
-    Giới hạn hue trong dải xanh-vàng để không nhận nhầm nền tím/xám bão hòa.
-    Closing nối các vùng ứng viên; tô contour ngoài lớn nhất để lấp kín vùng
-    bệnh và bóng tối bên trong phiến lá.
-    Ảnh ``SATURATION`` vẫn được trả về để tương thích thứ tự bước pipeline.
+    distance = cv2.distanceTransform(
+        cv2.bitwise_not(green_mask), cv2.DIST_L2, 5,
+    )
+    grabcut_mask = np.full(green_mask.shape, cv2.GC_BGD, dtype=np.uint8)
+    grabcut_mask[distance <= LEAF_GRABCUT_BG_RADIUS] = cv2.GC_PR_BGD
+    grabcut_mask[distance <= LEAF_GRABCUT_FG_RADIUS] = cv2.GC_PR_FGD
+    hue, saturation, _ = cv2.split(hsv)
+    warm_hue_background = (hue <= 24) | (hue >= 165)
+    neutral_background = saturation < 15
+    grabcut_mask[warm_hue_background] = cv2.GC_PR_BGD
+    grabcut_mask[neutral_background] = cv2.GC_BGD
+    grabcut_mask[green_mask > 0] = cv2.GC_FGD
+
+    border_size = min(5, max(1, min(image.shape[:2]) // 4))
+    grabcut_mask[:border_size, :] = cv2.GC_BGD
+    grabcut_mask[-border_size:, :] = cv2.GC_BGD
+    grabcut_mask[:, :border_size] = cv2.GC_BGD
+    grabcut_mask[:, -border_size:] = cv2.GC_BGD
+    grabcut_mask[green_mask > 0] = cv2.GC_FGD
+
+    background_model = np.zeros((1, 65), dtype=np.float64)
+    foreground_model = np.zeros((1, 65), dtype=np.float64)
+    cv2.grabCut(
+        image,
+        grabcut_mask,
+        None,
+        background_model,
+        foreground_model,
+        LEAF_GRABCUT_ITERATIONS,
+        cv2.GC_INIT_WITH_MASK,
+    )
+    refined = np.where(
+        (grabcut_mask == cv2.GC_FGD) | (grabcut_mask == cv2.GC_PR_FGD),
+        255,
+        0,
+    ).astype(np.uint8)
+    warm_lesions = (
+        (((hue >= 15) & (hue <= 24)) | (hue >= 165))
+        & (saturation >= LEAF_WARM_MIN_SATURATION)
+        & (hsv[:, :, 2] >= LEAF_WARM_MIN_VALUE)
+        & (distance <= LEAF_WARM_EDGE_RESTORE_RADIUS)
+    )
+    refined[warm_lesions] = 255
+    return refined
+
+
+def segment_leaf(image: np.ndarray) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """Tách phiến lá bằng ngưỡng HSV và giữ cả vùng bệnh bên trong contour.
+
+    Dùng ngưỡng xanh lá bão hòa cao làm foreground seed. GrabCut phục hồi vùng
+    tối và cuống gần seed, đồng thời phân biệt bóng lân cận qua màu nền. Sau
+    closing 5×5 và giữ/tô các contour lớn hơn 3% contour lớn nhất, các nếp gập
+    nội bộ được lấp kín. Ảnh ``SATURATION`` vẫn được trả về để tương thích.
     """
     _validate_image(image)
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     saturation = hsv[:, :, 1]
-    leaf_pixels = (
-        (hsv[:, :, 0] >= LEAF_HUE_RANGE[0])
-        & (hsv[:, :, 0] <= LEAF_HUE_RANGE[1])
-        & (saturation >= LEAF_MIN_SATURATION)
+    green_mask = cv2.inRange(
+        hsv,
+        np.array(LEAF_GREEN_LOWER, dtype=np.uint8),
+        np.array(LEAF_GREEN_UPPER, dtype=np.uint8),
     )
-    leaf_mask = np.where(leaf_pixels, 255, 0).astype(np.uint8)
+    leaf_mask = _refine_leaf_mask(image, hsv, green_mask)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, LEAF_CLOSE_KSIZE)
-    leaf_mask = cv2.morphologyEx(leaf_mask, cv2.MORPH_CLOSE, kernel)
-    warm_leaf_context = cv2.dilate(
-        leaf_mask,
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, LEAF_WARM_CONTEXT_KSIZE),
+    closing_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, LEAF_CLOSE_KSIZE,
     )
-    warm_lesions = (
-        (hsv[:, :, 0] <= LEAF_WARM_HUE_MAX)
-        & (saturation >= LEAF_WARM_MIN_SATURATION)
-        & (hsv[:, :, 2] <= LEAF_WARM_MAX_VALUE)
-        & (hsv[:, :, 2] >= LEAF_WARM_MIN_VALUE)
-    )
-    leaf_mask[
-        warm_lesions & (warm_leaf_context > 0)
-    ] = 255
-    shadow_mask = np.where(
-        (saturation <= LEAF_SHADOW_MAX_SATURATION)
-        & (hsv[:, :, 2] <= LEAF_SHADOW_MAX_VALUE),
-        255, 0,
-    ).astype(np.uint8)
-    shadow_context = cv2.dilate(
-        leaf_mask,
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, LEAF_SHADOW_CONTEXT_KSIZE),
-    )
-    leaf_mask[(shadow_mask > 0) & (shadow_context > 0)] = 255
-    leaf_mask = cv2.morphologyEx(leaf_mask, cv2.MORPH_CLOSE, kernel)
-    leaf_mask = _largest_component(leaf_mask)
+    leaf_mask = cv2.morphologyEx(leaf_mask, cv2.MORPH_CLOSE, closing_kernel)
+    leaf_mask = _fill_largest_contour(leaf_mask)
 
     return leaf_mask, {
         steps.SATURATION: saturation,
