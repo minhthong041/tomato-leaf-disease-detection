@@ -26,6 +26,7 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Database (PostgreSQL) và model Django | Xong |
 | Trang quản trị `/admin/` | Xong |
 | Đăng nhập JWT, CORS cho frontend | Xong |
+| Đăng ký tài khoản, trang điều khoản sử dụng | Xong — `POST /api/auth/register/` (đăng nhập luôn), trang `/register`, `/terms` |
 | Khung pipeline và quy ước vào/ra ([docs/pipeline.md](docs/pipeline.md)) | Xong |
 | Chia dữ liệu train/test | Xong — 80/20 theo từng lớp ([experiments/split_dataset.py](backend/experiments/split_dataset.py), `dataset/splits/*.txt`); tên thư mục lớp phải trùng `diseases.code` |
 | Giai đoạn 1: tiền xử lý (resize, Bilateral, CLAHE) | Xong |
@@ -35,7 +36,7 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Cấp độ 0–4 và khuyến nghị IPM | Xong |
 | Danh sách lớp bệnh (bảng `diseases`) | Xong — đủ 10 lớp lá cà chua của PlantVillage, nạp bằng migration |
 | API tải ảnh, lịch sử, kết quả, đánh dấu | Xong — chạy pipeline ngay trong request; khi các giai đoạn còn là khung thì kết quả là `failed` |
-| Giao diện frontend | Có khung: đăng nhập, tải ảnh, kết quả, lịch sử — đã nối API |
+| Giao diện frontend | Có khung: đăng nhập, đăng ký, điều khoản, tải ảnh, kết quả, lịch sử — đã nối API |
 
 ## Công nghệ
 
