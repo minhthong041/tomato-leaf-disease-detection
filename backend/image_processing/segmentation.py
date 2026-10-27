@@ -25,6 +25,7 @@ LEAF_WARM_MIN_SATURATION = 50
 LEAF_WARM_MIN_VALUE = 40
 LESION_OPEN_KSIZE = (3, 3)
 LESION_CLOSE_KSIZE = (5, 5)
+LESION_EDGE_MARGIN_PX = 5
 HEALTHY_HUE_RANGE = (35, 85)
 HEALTHY_MIN_SATURATION = 25
 HEALTHY_MIN_VALUE = 30
@@ -49,7 +50,7 @@ def _validate_mask(mask: np.ndarray, shape: tuple[int, int], name: str) -> None:
 
 
 def _fill_largest_contour(mask: np.ndarray) -> np.ndarray:
-    """Tô kín contour ngoài lớn và giữ các mảnh lá đáng kể."""
+    """Tô contour ngoài và giữ mọi mảnh có diện tích từ 3% contour lớn nhất."""
     contours, _ = cv2.findContours(
         mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
     )
@@ -69,7 +70,7 @@ def _fill_largest_contour(mask: np.ndarray) -> np.ndarray:
 def _refine_leaf_mask(
     image: np.ndarray, hsv: np.ndarray, green_mask: np.ndarray,
 ) -> np.ndarray:
-    """Recover folded tissue near green pixels while classifying nearby shadows."""
+    """Khôi phục mô lá gần điểm xanh và phân biệt bóng đổ ở vùng lân cận."""
     if min(image.shape[:2]) < 2 or cv2.countNonZero(green_mask) == 0:
         return green_mask
 
@@ -154,6 +155,8 @@ def segment_lesions(
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     """Tách đốm trong lá, giới hạn màu khỏe và loại vùng nhiễu nhỏ.
 
+    Bỏ qua vùng cách biên ``leaf_mask`` tối đa 5 pixel để hạn chế bóng đổ
+    sát mép lá bị nhận nhầm thành đốm bệnh.
     ``lesion_mask`` được giao với ``leaf_mask`` lần cuối để bảo đảm mọi pixel
     đốm đều thuộc diện tích lá.
     """
@@ -172,11 +175,16 @@ def segment_lesions(
     healthy_mask = np.where(healthy_pixels, 255, 0).astype(np.uint8)
     healthy_mask = cv2.bitwise_and(healthy_mask, leaf_mask)
 
+    edge_kernel_size = LESION_EDGE_MARGIN_PX * 2 + 1
+    edge_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (edge_kernel_size, edge_kernel_size),
+    )
+    leaf_core = cv2.erode(leaf_mask, edge_kernel)
     lesion_candidates = (
         (healthy_mask == 0)
         & (saturation >= LESION_MIN_SATURATION)
         & (value >= HEALTHY_MIN_VALUE)
-        & (leaf_mask > 0)
+        & (leaf_core > 0)
     )
     lesion_mask_raw = np.where(lesion_candidates, 255, 0).astype(np.uint8)
 
@@ -184,7 +192,7 @@ def segment_lesions(
     close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, LESION_CLOSE_KSIZE)
     lesion_mask = cv2.morphologyEx(lesion_mask_raw, cv2.MORPH_OPEN, open_kernel)
     lesion_mask = cv2.morphologyEx(lesion_mask, cv2.MORPH_CLOSE, close_kernel)
-    lesion_mask = cv2.bitwise_and(lesion_mask, leaf_mask)
+    lesion_mask = cv2.bitwise_and(lesion_mask, leaf_core)
     component_count, labels, stats, _ = cv2.connectedComponentsWithStats(
         lesion_mask, connectivity=8,
     )

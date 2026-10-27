@@ -81,7 +81,9 @@ cách seed tối đa 20 pixel mới được khôi phục sau phân đoạn. Sau
 hình thái bằng kernel elip 5×5 chạy một lần, không opening/erosion, nhằm tránh
 làm đứt cuống. Contour ngoài lớn nhất cùng các contour có diện tích ít nhất 3%
 diện tích contour lớn nhất được tô kín. Tách mô khỏe xét đồng thời Hue,
-Saturation và Value; mô trung tính ít bão hòa không bị tính thành đốm.
+Saturation và Value; mô trung tính ít bão hòa không bị tính thành đốm. Khi
+tách đốm, vùng cách biên `leaf_mask` tối đa 5 pixel cũng bị loại để hạn chế
+bóng đổ sát mép lá bị nhận nhầm là bệnh.
 Opening, closing và ngưỡng diện tích thành phần tối thiểu trong bước tách đốm
 loại nhiễu nhỏ. `lesion_mask` luôn là tập con của `leaf_mask`.
 

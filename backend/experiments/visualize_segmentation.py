@@ -1,11 +1,11 @@
-"""Create visual reviews of leaf and lesion segmentation without classification."""
+"""Tạo ảnh rà soát phân đoạn lá và đốm bệnh mà không chạy phân loại."""
 import argparse
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from image_processing import preprocessing, segmentation, steps
+from image_processing import pipeline, preprocessing, segmentation, steps
 
 IMAGE_EXTENSIONS = {'.bmp', '.jpeg', '.jpg', '.png', '.tif', '.tiff', '.webp'}
 TILE_SIZE = (512, 512)
@@ -50,14 +50,6 @@ def _collect_images(inputs: list[Path]) -> list[Path]:
     return list(dict.fromkeys(images))
 
 
-def _load_image(path: Path) -> np.ndarray:
-    data = np.fromfile(str(path), dtype=np.uint8)
-    image = cv2.imdecode(data, cv2.IMREAD_COLOR) if data.size else None
-    if image is None:
-        raise ValueError(f'Không đọc được ảnh: {path}')
-    return image
-
-
 def _tile(image: np.ndarray, title: str) -> np.ndarray:
     if image.ndim == 2:
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
@@ -96,12 +88,12 @@ def _make_panel(
     ).astype(np.uint8)
 
     tiles = [
-        _tile(original, 'Original'),
-        _tile(processed, 'Preprocessed (CLAHE)'),
-        _tile(leaf_mask, 'Leaf mask'),
-        _tile(leaf_overlay, 'Leaf overlay (green)'),
-        _tile(lesion_mask, 'Lesion mask'),
-        _tile(lesion_overlay, f'Overlay (red lesions) - infected {infected_ratio:.2%}'),
+        _tile(original, 'Ảnh gốc'),
+        _tile(processed, 'Sau tiền xử lý (CLAHE)'),
+        _tile(leaf_mask, 'Mask lá'),
+        _tile(leaf_overlay, 'Lớp phủ lá (xanh)'),
+        _tile(lesion_mask, 'Mask đốm bệnh'),
+        _tile(lesion_overlay, f'Đốm bệnh (đỏ) - nhiễm {infected_ratio:.2%}'),
     ]
     rows = [
         cv2.hconcat(tiles[index:index + PANEL_COLUMNS])
@@ -113,7 +105,7 @@ def _make_panel(
 def review_image(
     path: Path, output_path: Path,
 ) -> tuple[int, int, float, np.ndarray]:
-    original = _load_image(path)
+    original = pipeline.load_image(path)
     processed, preprocessed_steps = preprocessing.preprocess(original)
     leaf_mask, _ = segmentation.segment_leaf(processed)
     lesion_mask, _ = segmentation.segment_lesions(processed, leaf_mask)

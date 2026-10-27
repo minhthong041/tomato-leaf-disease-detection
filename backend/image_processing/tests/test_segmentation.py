@@ -325,6 +325,19 @@ class SegmentationTests(TestCase):
         self.assertTrue(np.all((lesion_mask > 0) <= (leaf_mask > 0)))
         self.assertTrue(all(lesion['circularity'] <= 1.0 for lesion in lesions))
 
+    def test_segment_lesions_ignores_spots_near_leaf_boundary(self):
+        image = np.full((100, 100, 3), 255, dtype=np.uint8)
+        cv2.circle(image, (50, 50), 30, (0, 200, 0), -1)
+        cv2.circle(image, (50, 50), 8, (0, 70, 120), -1)
+        cv2.circle(image, (50, 50), 33, (0, 70, 120), 4)
+        leaf_mask = np.zeros((100, 100), dtype=np.uint8)
+        cv2.circle(leaf_mask, (50, 50), 35, 255, -1)
+
+        lesion_mask, _ = segmentation.segment_lesions(image, leaf_mask)
+
+        self.assertEqual(lesion_mask[50, 18], 0)
+        self.assertEqual(lesion_mask[50, 50], 255)
+
     def test_segment_lesions_ignores_neutral_gray_region(self):
         image = synthetic_leaf()
         cv2.rectangle(image, (42, 43), (47, 48), (145, 145, 145), -1)
