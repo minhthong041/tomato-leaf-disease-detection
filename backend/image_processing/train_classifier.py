@@ -1,6 +1,5 @@
-"""Huấn luyện SVM (3B); chạy từ backend bằng python -m image_processing.train_classifier."""
+"""Huấn luyện bộ phân loại SVM cho bệnh lá cà chua."""
 
-import argparse
 import hashlib
 import json
 import time
@@ -12,255 +11,297 @@ import matplotlib
 import numpy as np
 
 matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 from sklearn.metrics import (
+    ConfusionMatrixDisplay,
     accuracy_score,
     classification_report,
     confusion_matrix,
-    ConfusionMatrixDisplay,
+    f1_score,
 )
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
 from . import classifier, preprocessing, segmentation
+from .pipeline import load_image
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
+BACKEND_DIR = Path(__file__).resolve().parent.parent
 DATASET_DIR = BACKEND_DIR / "dataset"
 SPLITS_DIR = DATASET_DIR / "splits"
 OUTPUT_DIR = BACKEND_DIR / "experiments" / "output"
-MODEL_PATH = classifier.MODEL_PATH
-# Ngưỡng cho thí nghiệm mới, không khẳng định là ngưỡng của model cũ.
-TEMP_S_THRESHOLD = 30
-RANDOM_STATE = 42
-PROGRESS_INTERVAL = 250
-FIGURE_SIZE = (14, 11)
-FIGURE_DPI = 200
-MASK_MODE = "auto"
-VI_LABELS = {
+
+VALID_SPLITS = ("train", "test")
+FEATURE_CACHE_VERSION = "3b-v2"
+TEMP_S_THRESHOLD = 40
+
+DISEASE_NAMES = {
     "Tomato___Bacterial_spot": "Đốm vi khuẩn",
-    "Tomato___Early_blight": "Cháy lá sớm",
-    "Tomato___healthy": "Lá khỏe",
-    "Tomato___Late_blight": "Cháy lá muộn",
+    "Tomato___Early_blight": "Đốm vòng",
+    "Tomato___Late_blight": "Mốc sương",
     "Tomato___Leaf_Mold": "Mốc lá",
     "Tomato___Septoria_leaf_spot": "Đốm lá Septoria",
     "Tomato___Spider_mites Two-spotted_spider_mite": "Nhện đỏ hai chấm",
-    "Tomato___Target_Spot": "Đốm vòng",
-    "Tomato___Tomato_mosaic_virus": "Virus khảm cà chua",
-    "Tomato___Tomato_Yellow_Leaf_Curl_Virus": "Virus xoăn vàng lá",
+    "Tomato___Target_Spot": "Đốm đích",
+    "Tomato___Tomato_Yellow_Leaf_Curl_Virus": "Xoăn vàng lá",
+    "Tomato___Tomato_mosaic_virus": "Khảm lá",
+    "Tomato___healthy": "Lá khỏe mạnh",
 }
 
 
 def load_split(name: str) -> list[Path]:
-    """Đọc từng đường dẫn nguyên dòng, giữ dấu cách trong tên file."""
-    if name not in ("train", "test"):
-        raise ValueError("name phải là 'train' hoặc 'test'")
-    lines = (SPLITS_DIR / f"{name}.txt").read_text(encoding="utf-8-sig").splitlines()
-    return [DATASET_DIR / line.strip() for line in lines if line.strip()]
+    """Đọc danh sách đường dẫn ảnh từ tập train hoặc test."""
+    if name not in VALID_SPLITS:
+        raise ValueError(f"Split không hợp lệ: {name}")
 
-
-def _temporary_mask(image):
-    """Mask HSV tạm cho 3B; xóa phần này khi chốt 3C sau việc 2A."""
-    saturation = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)[:, :, 1]
-    _, mask = cv2.threshold(saturation, TEMP_S_THRESHOLD, 255, cv2.THRESH_BINARY)
-    return mask
+    split_file = SPLITS_DIR / f"{name}.txt"
+    lines = split_file.read_text(encoding="utf-8-sig").splitlines()
+    return [DATASET_DIR / Path(line.strip()) for line in lines if line.strip()]
 
 
 def leaf_mask_for(image: np.ndarray) -> np.ndarray:
-    """Lấy mask chính thức; fallback chỉ khi TV2 chưa cài đặt hàm.
+    """Tạo mask lá từ ảnh đã tiền xử lý."""
+    try:
+        mask, _ = segmentation.segment_leaf(image)
+    except NotImplementedError:
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        _, mask = cv2.threshold(hsv[:, :, 1], TEMP_S_THRESHOLD, 255, cv2.THRESH_BINARY)
 
-    Chế độ temp cho phép tái lập thí nghiệm 3B ngay cả khi 2A đã merge.
-    Không fallback khi segmentation trả mask sai hoặc phát sinh lỗi khác.
-    """
-    if MASK_MODE == "temp":
-        mask = _temporary_mask(image)
-    else:
-        try:
-            mask, _ = segmentation.segment_leaf(image)
-        except NotImplementedError:
-            if MASK_MODE == "segmentation":
-                raise
-            mask = _temporary_mask(image)
     if not isinstance(mask, np.ndarray) or mask.dtype != np.uint8:
-        raise ValueError("Mask phải là ndarray uint8")
-    if mask.shape != image.shape[:2] or not np.isin(mask, (0, 255)).all():
-        raise ValueError("Mask phải cùng kích thước ảnh, chỉ chứa 0/255")
+        raise ValueError("leaf_mask phải là ndarray uint8")
+    if mask.shape != image.shape[:2]:
+        raise ValueError("Kích thước mask không khớp ảnh")
+    if not np.isin(mask, (0, 255)).all():
+        raise ValueError("leaf_mask chỉ được chứa 0 và 255")
     if cv2.countNonZero(mask) == 0:
         raise ValueError("Không tìm thấy vùng lá")
     return mask
 
 
-def build_features(paths: list[Path], split: str | None = None):
-    """Tiền xử lý → mask → đặc trưng; split=None không đọc/ghi cache."""
+def feature_signature(paths: list[Path]) -> str:
+    """Tạo signature từ mã xử lý ảnh và dữ liệu đầu vào."""
+    hasher = hashlib.sha256()
+    hasher.update(FEATURE_CACHE_VERSION.encode("utf-8"))
+
+    for source in (
+        Path(__file__),
+        Path(preprocessing.__file__),
+        Path(segmentation.__file__),
+        Path(classifier.__file__),
+    ):
+        hasher.update(source.read_bytes())
+
+    for path in paths:
+        hasher.update(str(path.resolve()).encode("utf-8"))
+        stat = path.stat()
+        hasher.update(str(stat.st_size).encode("utf-8"))
+        hasher.update(str(stat.st_mtime_ns).encode("utf-8"))
+
+    return hasher.hexdigest()
+
+
+def build_features(
+    paths: list[Path],
+    split: str | None = None,
+    use_cache: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Trích xuất đặc trưng và lưu cache theo tập dữ liệu."""
     paths = [Path(path) for path in paths]
     if not paths:
         raise ValueError("Danh sách ảnh rỗng")
-    if split not in (None, "train", "test"):
-        raise ValueError("split phải là train, test hoặc None")
-    cache_file = OUTPUT_DIR / f"features_{split}.npz" if split else None
-    signature = None
-    if cache_file is not None:
-        # Giữ cơ chế cache đơn giản; bao gồm chế độ mask và script train.
-        digest = hashlib.sha256()
-        for source in (
-            Path(__file__),
-            Path(preprocessing.__file__),
-            Path(segmentation.__file__),
-            Path(classifier.__file__),
-        ):
-            digest.update(source.read_bytes())
-        digest.update(MASK_MODE.encode("utf-8"))
-        digest.update(
-            json.dumps([str(p) for p in paths], ensure_ascii=False).encode("utf-8")
-        )
-        signature = digest.hexdigest()
-        if cache_file.exists():
-            try:
-                with np.load(cache_file, allow_pickle=False) as cache:
-                    X, y = cache["X"], cache["y"]
-                    if (
-                        cache["signature"].item() == signature
-                        and X.shape == (len(paths), len(classifier.FEATURE_NAMES))
-                        and y.shape == (len(paths),)
-                        and np.isfinite(X).all()
-                        and np.array_equal(y, [p.parent.name for p in paths])
-                    ):
-                        print(f"Đọc cache: {cache_file}")
-                        return X, y
-            except (OSError, ValueError, KeyError):
-                print("Cache không hợp lệ, tính lại.")
-    features, labels = [], []
+    if split not in (None, "train", "test", "smoke"):
+        raise ValueError(f"Split cache không hợp lệ: {split}")
+
+    signature = feature_signature(paths) if split is not None else None
+    cache_path = OUTPUT_DIR / f"features_{split}.npz" if split else None
+
+    if use_cache and cache_path is not None and cache_path.exists():
+        try:
+            with np.load(cache_path, allow_pickle=False) as cached:
+                X_cached = cached["X"]
+                y_cached = cached["y"]
+                valid = (
+                    cached["signature"].item() == signature
+                    and X_cached.shape == (len(paths), len(classifier.FEATURE_NAMES))
+                    and y_cached.shape == (len(paths),)
+                    and np.array_equal(
+                        cached["paths"],
+                        np.asarray([str(path) for path in paths]),
+                    )
+                    and np.array_equal(
+                        y_cached, np.asarray([path.parent.name for path in paths])
+                    )
+                    and np.isfinite(X_cached).all()
+                )
+                if valid:
+                    print(f"Sử dụng cache: {cache_path}")
+                    return X_cached, y_cached
+        except (OSError, ValueError, KeyError, EOFError):
+            pass
+
+    features = []
+    labels = []
+    start = time.perf_counter()
+
     for index, path in enumerate(paths, start=1):
         try:
-            image = cv2.imdecode(
-                np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR
-            )
-            if image is None:
-                raise ValueError("Không đọc được ảnh")
+            image = load_image(path)
             processed, _ = preprocessing.preprocess(image)
             mask = leaf_mask_for(processed)
-            vector = np.asarray(classifier.extract_features(processed, mask))
-            if (
-                vector.shape != (len(classifier.FEATURE_NAMES),)
-                or not np.isfinite(vector).all()
-            ):
-                raise ValueError("Vector đặc trưng sai kích thước hoặc chứa NaN/Inf")
+            vector = np.asarray(
+                classifier.extract_features(processed, mask), dtype=np.float64
+            )
+            if vector.shape != (len(classifier.FEATURE_NAMES),):
+                raise ValueError(f"Vector đặc trưng sai kích thước: {vector.shape}")
+            if not np.isfinite(vector).all():
+                raise ValueError("Vector đặc trưng chứa NaN hoặc Inf")
+            features.append(vector)
+            labels.append(path.parent.name)
         except Exception as exc:
-            raise RuntimeError(f"Lỗi ảnh {index}/{len(paths)}: {path}") from exc
-        features.append(vector)
-        labels.append(path.parent.name)
-        if index % PROGRESS_INTERVAL == 0 or index == len(paths):
-            print(f"[{split or 'custom'}] {index}/{len(paths)}", flush=True)
-    X, y = np.asarray(features, dtype=np.float64), np.asarray(labels, dtype=str)
-    if cache_file is not None:
+            raise RuntimeError(f"Không thể trích đặc trưng ảnh: {path}") from exc
+
+        if index % 100 == 0 or index == len(paths):
+            print(f"[{index}/{len(paths)}] {time.perf_counter() - start:.1f}s")
+
+    X = np.asarray(features, dtype=np.float64)
+    y = np.asarray(labels, dtype=str)
+
+    if cache_path is not None:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(cache_file, X=X, y=y, signature=np.asarray(signature))
+        np.savez_compressed(
+            cache_path,
+            X=X,
+            y=y,
+            paths=np.asarray([str(path) for path in paths]),
+            signature=np.asarray(signature),
+        )
+        print(f"Đã lưu cache: {cache_path}")
+
     return X, y
 
 
-def train(X, y):
-    """Huấn luyện scaler và SVM chỉ bằng dữ liệu train."""
+def train(X: np.ndarray, y: np.ndarray):
+    """Huấn luyện bộ phân loại SVM trên tập đặc trưng."""
+    if X.ndim != 2 or X.shape[1] != len(classifier.FEATURE_NAMES):
+        raise ValueError("Ma trận đặc trưng không hợp lệ")
+    if y.ndim != 1 or len(X) != len(y):
+        raise ValueError("Số lượng đặc trưng và nhãn không khớp")
+    if not np.isfinite(X).all():
+        raise ValueError("Ma trận đặc trưng chứa NaN hoặc Inf")
+    if len(np.unique(y)) < 2:
+        raise ValueError("Cần ít nhất hai lớp để huấn luyện")
+
     model = make_pipeline(
         StandardScaler(),
-        SVC(probability=True, class_weight="balanced", random_state=RANDOM_STATE),
+        SVC(probability=True, class_weight="balanced", random_state=42),
     )
     model.fit(X, y)
     return model
 
 
-def evaluate(model, X, y, out_dir):
-    """Lưu accuracy, F1 từng lớp, macro F1 và confusion matrix tiếng Việt."""
+def evaluate(
+    model,
+    X: np.ndarray,
+    y: np.ndarray,
+    out_dir: Path = OUTPUT_DIR,
+) -> dict:
+    """Đánh giá mô hình và lưu confusion matrix."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    predicted = model.predict(X)
+
     labels = list(model.classes_)
+    predictions = model.predict(X)
+    accuracy = accuracy_score(y, predictions)
+    macro_f1 = f1_score(y, predictions, labels=labels, average="macro", zero_division=0)
     report = classification_report(
-        y, predicted, labels=labels, output_dict=True, zero_division=0
+        y, predictions, labels=labels, output_dict=True, zero_division=0
     )
-    report["accuracy"] = float(accuracy_score(y, predicted))
-    text = classification_report(y, predicted, labels=labels, digits=4, zero_division=0)
-    print(f"Accuracy: {report['accuracy']:.4f}")
-    print(f"Macro F1: {report['macro avg']['f1-score']:.4f}\n{text}")
-    (out_dir / "classification_report.txt").write_text(text, encoding="utf-8")
-    (out_dir / "classification_report.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    fig, ax = plt.subplots(figsize=FIGURE_SIZE)
+    matrix = confusion_matrix(y, predictions, labels=labels)
+
+    fig, ax = plt.subplots(figsize=(14, 12))
     try:
-        ConfusionMatrixDisplay(
-            confusion_matrix(y, predicted, labels=labels),
-            display_labels=[VI_LABELS.get(label, label) for label in labels],
-        ).plot(
-            ax=ax, cmap="Blues", xticks_rotation=45, values_format="d", colorbar=False
+        display = ConfusionMatrixDisplay(
+            confusion_matrix=matrix,
+            display_labels=[DISEASE_NAMES.get(label, label) for label in labels],
         )
-        ax.set_title("Ma trận nhầm lẫn - Phân loại bệnh lá cà chua")
+        display.plot(
+            ax=ax,
+            cmap="Blues",
+            xticks_rotation=45,
+            values_format="d",
+            colorbar=False,
+        )
+        ax.set_title("Ma trận nhầm lẫn - SVM")
         ax.set_xlabel("Nhãn dự đoán")
         ax.set_ylabel("Nhãn thực tế")
         fig.tight_layout()
-        fig.savefig(
-            out_dir / "confusion_matrix.png", dpi=FIGURE_DPI, bbox_inches="tight"
-        )
+        fig.savefig(out_dir / "confusion_matrix.png", dpi=150, bbox_inches="tight")
     finally:
         plt.close(fig)
-    return report
 
-
-def main():
-    """Chạy thí nghiệm; mặc định lưu model tại classifier.MODEL_PATH."""
-    global MASK_MODE
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--mask", choices=("auto", "temp", "segmentation"), default="auto"
-    )
-    args = parser.parse_args()
-    MASK_MODE = args.mask
-    started = time.perf_counter()
-    print(f"Mask mode: {MASK_MODE}; TEMP_S_THRESHOLD: {TEMP_S_THRESHOLD}", flush=True)
-    if MASK_MODE == "auto":
-        print("Auto: gọi TV2, chỉ dùng mask tạm nếu gặp NotImplementedError.")
-    train_paths, test_paths = load_split("train"), load_split("test")
-    for name, paths in (("train", train_paths), ("test", test_paths)):
-        if not paths or len({p.resolve() for p in paths}) != len(paths):
-            raise ValueError(f"Split {name} rỗng hoặc chứa đường dẫn trùng")
-        for path in paths:
-            if not path.is_file():
-                raise FileNotFoundError(path)
-    if {p.resolve() for p in train_paths} & {p.resolve() for p in test_paths}:
-        raise ValueError("Train và test có đường dẫn trùng nhau")
-    print(f"Train: {len(train_paths)}; Test: {len(test_paths)}", flush=True)
-    X_train, y_train = build_features(train_paths, "train")
-    X_test, y_test = build_features(test_paths, "test")
-    if set(y_test) - set(y_train):
-        raise ValueError("Test có lớp không tồn tại trong train")
-    print("Đang huấn luyện SVM...", flush=True)
-    model = train(X_train, y_train)
-    report = evaluate(model, X_test, y_test, OUTPUT_DIR)
-    model_path = Path(MODEL_PATH)
-    model_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(model, model_path)
-    elapsed = time.perf_counter() - started
-    summary = {
-        "mask_mode": MASK_MODE,
-        "temporary_s_threshold": (
-            TEMP_S_THRESHOLD if MASK_MODE != "segmentation" else None
-        ),
-        "train_samples": len(y_train),
-        "test_samples": len(y_test),
-        "classes": list(model.classes_),
-        "runtime_seconds": elapsed,
-        "model_bytes": model_path.stat().st_size,
-        "accuracy": report["accuracy"],
-        "macro_f1": report["macro avg"]["f1-score"],
-        "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        "segmentation_sha256": hashlib.sha256(
-            Path(segmentation.__file__).read_bytes()
-        ).hexdigest(),
+    return {
+        "accuracy": float(accuracy),
+        "macro_f1": float(macro_f1),
+        "per_class_f1": {label: float(report[label]["f1-score"]) for label in labels},
     }
-    (OUTPUT_DIR / "run_summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+
+
+def main() -> None:
+    """Huấn luyện và đánh giá SVM trên dataset PlantVillage."""
+    start = time.perf_counter()
+    train_paths = load_split("train")
+    test_paths = load_split("test")
+
+    for name, paths in (("train", train_paths), ("test", test_paths)):
+        if not paths:
+            raise ValueError(f"Split {name} rỗng")
+        if len({path.resolve() for path in paths}) != len(paths):
+            raise ValueError(f"Split {name} chứa ảnh trùng")
+
+    if {path.resolve() for path in train_paths} & {
+        path.resolve() for path in test_paths
+    }:
+        raise ValueError("Train và test có ảnh trùng nhau")
+
+    print(f"Train: {len(train_paths)} ảnh")
+    print(f"Test: {len(test_paths)} ảnh")
+    X_train, y_train = build_features(train_paths, split="train")
+    X_test, y_test = build_features(test_paths, split="test")
+
+    if set(y_test) - set(y_train):
+        raise ValueError("Test chứa lớp không có trong train")
+
+    print("Huấn luyện SVM...")
+    train_start = time.perf_counter()
+    model = train(X_train, y_train)
+    train_seconds = time.perf_counter() - train_start
+
+    print("Đánh giá mô hình...")
+    metrics = evaluate(model, X_test, y_test)
+
+    classifier.MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, classifier.MODEL_PATH)
+
+    metrics["train_samples"] = len(y_train)
+    metrics["test_samples"] = len(y_test)
+    metrics["train_seconds"] = round(train_seconds, 2)
+    metrics["total_seconds"] = round(time.perf_counter() - start, 2)
+    metrics["model_bytes"] = classifier.MODEL_PATH.stat().st_size
+    metrics["feature_cache_version"] = FEATURE_CACHE_VERSION
+    metrics["segmentation_sha256"] = hashlib.sha256(
+        Path(segmentation.__file__).read_bytes()
+    ).hexdigest()
+
+    metrics_path = OUTPUT_DIR / "svm_metrics.json"
+    metrics_path.write_text(
+        json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    print(f"Model: {model_path}; {summary['model_bytes']} byte")
-    print(f"Tổng thời gian: {elapsed / 60:.2f} phút")
+
+    print(f"Accuracy: {metrics['accuracy']:.4f}")
+    print(f"Macro F1: {metrics['macro_f1']:.4f}")
+    print(f"Model: {classifier.MODEL_PATH}")
+    print(f"Metrics: {metrics_path}")
 
 
 if __name__ == "__main__":
