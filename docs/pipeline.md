@@ -71,14 +71,21 @@ hàm vẽ không tự thay đổi kích thước mask.
 
 `PipelineError` là lỗi do **ảnh** (người dùng gửi ảnh không phải lá, ảnh hỏng…): thông báo tiếng Việt, lưu vào `diagnosis_histories.error_message`. `ValueError` / `NotImplementedError` là lỗi do **code**.
 
-**Leaf mask phải gồm cả vùng vết bệnh.** Segmentation dùng Otsu trên kênh
-`b*` của CIELAB (ngưỡng thường để lấy lá xanh có b* cao hơn nền trung tính), sau đó closing
-kernel elip 5×5, lấp lỗ và giữ thành phần liên thông lớn nhất. Vết bệnh màu
-nâu/vàng có độ bão hòa khác lá xanh; nếu tách lá chỉ giữ vùng xanh thì vết
-bệnh bị coi là nền và `infected_ratio` sai. Tách mô khỏe xét đồng thời Hue,
-Saturation và Value; mô trung tính ít bão hòa không bị tính thành đốm. Opening,
-closing và ngưỡng diện tích thành phần tối thiểu loại nhiễu nhỏ. `lesion_mask`
-luôn là tập con của `leaf_mask`.
+**Leaf mask phải gồm cả vùng vết bệnh.** Segmentation chuyển ảnh BGR sang
+HSV và dùng ngưỡng xanh bão hòa cao (H 25–95, S 40–255, V 30–255) làm
+foreground seed. GrabCut phân loại vùng lân cận theo màu ảnh và nền cục bộ,
+để phục hồi nếp gập tối, mô hoại tử và cuống có màu yếu mà không mở rộng mask
+vào vùng bóng ngoại cảnh. Pixel trung tính và pixel Hue nâu/đỏ được đánh dấu
+nền có khả năng; chỉ pixel hoại tử bão hòa cao, Hue 15–24 hoặc 165–179 và
+cách seed tối đa 20 pixel mới được khôi phục sau phân đoạn. Sau đó chỉ closing
+hình thái bằng kernel elip 5×5 chạy một lần, không opening/erosion, nhằm tránh
+làm đứt cuống. Contour ngoài lớn nhất cùng các contour có diện tích ít nhất 3%
+diện tích contour lớn nhất được tô kín. Tách mô khỏe xét đồng thời Hue,
+Saturation và Value; mô trung tính ít bão hòa không bị tính thành đốm. Khi
+tách đốm, vùng cách biên `leaf_mask` tối đa 5 pixel cũng bị loại để hạn chế
+bóng đổ sát mép lá bị nhận nhầm là bệnh.
+Opening, closing và ngưỡng diện tích thành phần tối thiểu trong bước tách đốm
+loại nhiễu nhỏ. `lesion_mask` luôn là tập con của `leaf_mask`.
 
 *Ghi chú:* Ngưỡng Hue/Saturation/Value đốm bệnh được lựa chọn trên tập huấn
 luyện (train) theo tiêu chí tối ưu tỷ lệ lá khỏe bị xếp cấp >= 2 thấp nhất và
@@ -87,8 +94,29 @@ ngưỡng tạm thời cho đến khi có bộ mask đốm bệnh tô tay (groun
 
 ### Giới hạn đã biết (Known Limitations)
 
-Do có thêm ngưỡng Saturation/Value tối thiểu để lọc bóng lá, các đốm bệnh có
-màu đốm đen tối hoặc xám sâu bên trong phiến lá chưa được tính là vết bệnh.
+- Hàm `_fill_largest_contour` tự động lấp đầy (tô trắng) các lỗ thủng vật lý
+  nằm bên trong contour, ví dụ vết sâu ăn thủng hoặc đốm hoại tử rụng rời thành
+  lỗ.
+- GrabCut dựa vào màu lá và nền xung quanh nên nền đồng nhất hoặc bóng có
+  màu gần mô lá vẫn có thể bị nhận nhầm. Khe hẹp hơn kernel closing 5×5 có
+  thể bị nối. Các contour nhỏ hơn 3% diện tích contour lớn nhất bị loại;
+  vùng lá tách xa seed xanh có thể bị bỏ sót khỏi `leaf_mask`.
+
+### Xem trực quan segmentation
+
+Có thể kiểm tra trực tiếp một ảnh hoặc cả thư mục ảnh mà không chạy classifier,
+không cần `test_train_classifier` hay `train_classifier`. Chạy từ thư mục
+`backend/`:
+
+```powershell
+python -m experiments.visualize_segmentation dataset\splits\test.txt --out experiments\output\segmentation-review --show
+```
+
+Mỗi ảnh kết quả gồm ảnh gốc, ảnh sau tiền xử lý, `leaf_mask`, `lesion_mask`
+và overlay màu (lá xanh, đốm đỏ). Panel PNG được lưu vào `--out`; bỏ `--show`
+nếu chỉ muốn lưu kết quả. Có thể truyền đường dẫn một ảnh hoặc thư mục ảnh
+thay cho file split; đường dẫn trong file split được tính tương đối từ
+`dataset/`.
 
 ## 5. Kết quả trả về
 
