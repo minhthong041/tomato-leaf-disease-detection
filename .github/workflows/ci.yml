@@ -70,7 +70,7 @@ jobs:
         run: python manage.py migrate --noinput
 
       - name: Chạy test
-        run: python manage.py test api image_processing
+        run: python manage.py test api image_processing experiments
 
   frontend:
     name: Frontend

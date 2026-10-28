@@ -160,7 +160,8 @@ Các API khác yêu cầu header `Authorization: Bearer <access token>`. Access 
 python manage.py makemigrations api   # sau khi sửa models.py
 python manage.py migrate
 python manage.py check
-python manage.py test api image_processing   # chạy test
+python manage.py test api image_processing experiments   # chạy test
+python experiments/evaluate.py   # đánh giá tách lá, vết bệnh, cấp độ trên 30 ảnh mask chuẩn
 python -m image_processing.pipeline anh.jpg --out ket_qua   # chạy pipeline trên một ảnh
 npm run lint                          # kiểm tra code frontend
 ```
