@@ -87,13 +87,14 @@ def _make_panel(
         + 0.55 * np.array((0, 0, 255), dtype=np.float32)
     ).astype(np.uint8)
 
+    # Tiêu đề viết không dấu: font Hershey của cv2.putText chỉ vẽ được ký tự ASCII
     tiles = [
-        _tile(original, 'Ảnh gốc'),
-        _tile(processed, 'Sau tiền xử lý (CLAHE)'),
-        _tile(leaf_mask, 'Mask lá'),
-        _tile(leaf_overlay, 'Lớp phủ lá (xanh)'),
-        _tile(lesion_mask, 'Mask đốm bệnh'),
-        _tile(lesion_overlay, f'Đốm bệnh (đỏ) - nhiễm {infected_ratio:.2%}'),
+        _tile(original, 'Anh goc'),
+        _tile(processed, 'Sau tien xu ly (CLAHE)'),
+        _tile(leaf_mask, 'Mask la'),
+        _tile(leaf_overlay, 'Lop phu la (xanh)'),
+        _tile(lesion_mask, 'Mask dom benh'),
+        _tile(lesion_overlay, f'Dom benh (do) - nhiem {infected_ratio:.2%}'),
     ]
     rows = [
         cv2.hconcat(tiles[index:index + PANEL_COLUMNS])
