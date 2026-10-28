@@ -1,6 +1,8 @@
-import { Alert, Box, Button, Card, CardContent, Stack, TextField, Typography } from '@mui/material';
+import {
+  Alert, Box, Button, Card, CardContent, Link, Stack, TextField, Typography,
+} from '@mui/material';
 import { useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router';
+import { Navigate, Link as RouterLink, useLocation, useNavigate } from 'react-router';
 
 import { errorMessage } from '../api/client';
 import { useAuth } from '../auth/context';
@@ -48,6 +50,10 @@ export default function LoginPage() {
               disabled={submitting || !email || !password}>
               {submitting ? 'Đang đăng nhập…' : 'Đăng nhập'}
             </Button>
+            <Typography variant="body2" sx={{ textAlign: 'center' }}>
+              Chưa có tài khoản?{' '}
+              <Link component={RouterLink} to="/register">Đăng ký</Link>
+            </Typography>
           </Stack>
         </CardContent>
       </Card>

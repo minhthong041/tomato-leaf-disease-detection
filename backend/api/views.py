@@ -1,9 +1,34 @@
-from rest_framework import mixins, status, viewsets
+from django.contrib.auth.models import update_last_login
+from rest_framework import generics, mixins, status, viewsets
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
 
-from .services import run_diagnosis
 from .models import DiagnosisHistory
-from .serializers import DiagnosisCreateSerializer, DiagnosisSerializer
+from .serializers import DiagnosisCreateSerializer, DiagnosisSerializer, RegisterSerializer
+from .services import run_diagnosis
+
+
+class RegisterView(generics.GenericAPIView):
+    """POST /api/auth/register/ {email, fullname, password, accept_terms} -> {access, refresh}.
+
+    Tạo tài khoản rồi trả luôn cặp token như khi đăng nhập, để frontend vào thẳng trang Tải ảnh.
+    """
+
+    serializer_class = RegisterSerializer
+    permission_classes = [AllowAny]
+    authentication_classes = []  # không cần đọc token cũ (nếu có) khi đăng ký
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        refresh = RefreshToken.for_user(user)
+        update_last_login(None, user)
+        return Response(
+            {'access': str(refresh.access_token), 'refresh': str(refresh)},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class DiagnosisViewSet(

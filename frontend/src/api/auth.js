@@ -16,6 +16,16 @@ export async function login(email, password) {
   }
 }
 
+// Đăng ký xong backend trả luôn cặp token -> coi như đã đăng nhập
+export async function register({ email, fullname, password, acceptTerms }) {
+  const data = await request('/auth/register/', {
+    method: 'POST',
+    body: { email, fullname, password, accept_terms: acceptTerms },
+    auth: false,
+  });
+  tokens.set(data.access, data.refresh);
+}
+
 export async function logout() {
   const refresh = tokens.refresh;
   tokens.clear();

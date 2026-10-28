@@ -108,6 +108,15 @@ export const api = {
   patch: (path, body) => request(path, { method: 'PATCH', body }),
 };
 
+// Lỗi theo từng trường của DRF (400): { email: ["..."], password: ["...", "..."] } -> { email: "...", ... }
+export function fieldErrors(error) {
+  const data = error instanceof ApiError && error.status === 400 ? error.data : null;
+  if (!data || typeof data !== 'object' || Array.isArray(data) || data.detail) return {};
+  return Object.fromEntries(
+    Object.entries(data).map(([field, messages]) => [field, [].concat(messages).join(' ')]),
+  );
+}
+
 // Thông báo lỗi tiếng Việt để hiển thị cho người dùng
 export function errorMessage(error) {
   if (!(error instanceof ApiError)) {
@@ -115,5 +124,8 @@ export function errorMessage(error) {
   }
   if (error.status === 404) return 'Không tìm thấy dữ liệu, hoặc API này chưa được làm.';
   if (error.status >= 500) return 'Máy chủ gặp lỗi. Vui lòng thử lại sau.';
+  // Lỗi kiểm tra dữ liệu (backend đã trả tiếng Việt): gộp các thông báo lại
+  const messages = Object.values(fieldErrors(error));
+  if (messages.length > 0) return messages.join(' ');
   return error.message;
 }

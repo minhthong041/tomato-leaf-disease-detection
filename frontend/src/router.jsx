@@ -5,7 +5,7 @@ import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
 
-// Các trang sau đăng nhập được tách thành file JS riêng, chỉ tải khi mở trang
+// Các trang (trừ đăng nhập) được tách thành file JS riêng, chỉ tải khi mở trang
 const page = (load) => () => load().then((module) => ({ Component: module.default }));
 
 const router = createBrowserRouter([
@@ -13,6 +13,9 @@ const router = createBrowserRouter([
     element: <Layout />,
     children: [
       { path: '/login', element: <LoginPage /> },
+      // Trang công khai, không cần đăng nhập
+      { path: '/register', lazy: page(() => import('./pages/RegisterPage')) },
+      { path: '/terms', lazy: page(() => import('./pages/TermsPage')) },
       {
         element: <RequireAuth />,
         children: [

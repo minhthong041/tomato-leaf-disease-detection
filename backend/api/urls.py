@@ -6,13 +6,15 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from .views import DiagnosisViewSet
+from .views import DiagnosisViewSet, RegisterView
 
 router = SimpleRouter()
 # /diagnoses/ và /diagnoses/<id>/ — xem DiagnosisViewSet
 router.register('diagnoses', DiagnosisViewSet, basename='diagnosis')
 
 urlpatterns = [
+    # POST {"email", "fullname", "password", "accept_terms": true} -> {"access", "refresh"} (đăng nhập luôn)
+    path('auth/register/', RegisterView.as_view(), name='auth-register'),
     # POST {"email", "password"} -> {"access", "refresh"}
     path('auth/login/', TokenObtainPairView.as_view(), name='auth-login'),
     # POST {"refresh"} -> {"access", "refresh"} (refresh cũ bị vô hiệu)
