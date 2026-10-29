@@ -33,8 +33,7 @@ SPLITS_DIR = DATASET_DIR / "splits"
 OUTPUT_DIR = BACKEND_DIR / "experiments" / "output"
 
 VALID_SPLITS = ("train", "test")
-FEATURE_CACHE_VERSION = "3b-v2"
-TEMP_S_THRESHOLD = 40
+FEATURE_CACHE_VERSION = "3c-v1"
 
 DISEASE_NAMES = {
     "Tomato___Bacterial_spot": "Đốm vi khuẩn",
@@ -61,12 +60,8 @@ def load_split(name: str) -> list[Path]:
 
 
 def leaf_mask_for(image: np.ndarray) -> np.ndarray:
-    """Tạo mask lá từ ảnh đã tiền xử lý."""
-    try:
-        mask, _ = segmentation.segment_leaf(image)
-    except NotImplementedError:
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        _, mask = cv2.threshold(hsv[:, :, 1], TEMP_S_THRESHOLD, 255, cv2.THRESH_BINARY)
+    """Tạo mask lá từ ảnh đã tiền xử lý bằng segmentation.segment_leaf."""
+    mask, _ = segmentation.segment_leaf(image)
 
     if not isinstance(mask, np.ndarray) or mask.dtype != np.uint8:
         raise ValueError("leaf_mask phải là ndarray uint8")

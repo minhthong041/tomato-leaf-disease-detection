@@ -62,17 +62,18 @@ class TestLeafMaskFor(unittest.TestCase):
             with self.assertRaises(ValueError):
                 training.leaf_mask_for(image)
 
-    def test_fallback_only_for_not_implemented(self):
+    def test_no_temporary_mask_fallback(self):
         image = np.zeros((16, 16, 3), dtype=np.uint8)
-        image[:, :, 1] = 255
         with patch.object(
             training.segmentation,
             "segment_leaf",
             side_effect=NotImplementedError,
         ):
-            mask = training.leaf_mask_for(image)
-        self.assertEqual(mask.shape, image.shape[:2])
-        self.assertGreater(np.count_nonzero(mask), 0)
+            with self.assertRaises(NotImplementedError):
+                training.leaf_mask_for(image)
+
+    def test_temp_threshold_removed(self):
+        self.assertFalse(hasattr(training, "TEMP_S_THRESHOLD"))
 
     def test_does_not_hide_segmentation_errors(self):
         image = np.zeros((16, 16, 3), dtype=np.uint8)
