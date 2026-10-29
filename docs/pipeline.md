@@ -145,7 +145,10 @@ Từ thư mục `backend/` (đã kích hoạt venv):
 python -m image_processing.pipeline dataset\anh_thu\la_01.jpg --out ket_qua
 
 # Test của pipeline và database
-python manage.py test api image_processing
+python manage.py test api image_processing experiments
+
+# Đánh giá tách lá, vết bệnh và cấp độ so với 30 ảnh mask chuẩn (cần ảnh và mask trong dataset/)
+python experiments/evaluate.py
 ```
 
 Ảnh có tên tiếng Việt vẫn đọc được: dùng `pipeline.load_image()` thay cho `cv2.imread()` (hàm này trả `None` với đường dẫn có dấu trên Windows).
