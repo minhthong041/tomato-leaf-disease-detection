@@ -1,5 +1,6 @@
 from django.contrib.auth.models import update_last_login
 from rest_framework import generics, mixins, status, viewsets
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -10,6 +11,11 @@ from .serializers import (
     RegisterSerializer,
 )
 from .services import run_diagnosis
+
+# Lọc danh sách chẩn đoán theo ?is_bookmarked=true|false
+BOOKMARK_FILTER_PARAM = 'is_bookmarked'
+BOOKMARK_FILTER_VALUES = {'true': True, '1': True, 'false': False, '0': False}
+BOOKMARK_FILTER_ERROR = 'Tham số is_bookmarked chỉ nhận true hoặc false.'
 
 
 class RegisterView(generics.GenericAPIView):
@@ -40,7 +46,7 @@ class DiagnosisViewSet(
     """API chẩn đoán. Mỗi người dùng chỉ thấy các lần chẩn đoán của mình.
 
     POST   /api/diagnoses/       multipart "image" -> chạy pipeline ngay, trả kết quả (done hoặc failed)
-    GET    /api/diagnoses/       danh sách, mới nhất trước, 20 mục/trang
+    GET    /api/diagnoses/       danh sách, mới nhất trước, 20 mục/trang; ?is_bookmarked=true chỉ lấy kết quả đã lưu
     GET    /api/diagnoses/:id/   chi tiết
     PATCH  /api/diagnoses/:id/   {"is_bookmarked": true|false}
     """
@@ -50,11 +56,25 @@ class DiagnosisViewSet(
     http_method_names = ['get', 'post', 'patch', 'head', 'options']
 
     def get_queryset(self):
-        return (
+        queryset = (
             DiagnosisHistory.objects.filter(user=self.request.user)
             .select_related('disease')
             .prefetch_related('steps')
         )
+        if self.action == 'list':
+            queryset = self.filter_bookmarked(queryset)
+        return queryset
+
+    def filter_bookmarked(self, queryset):
+        """?is_bookmarked=true|false (không phân biệt hoa thường; 1/0 cũng được). Không có tham số thì lấy hết."""
+        value = self.request.query_params.get(BOOKMARK_FILTER_PARAM)
+        if value is None or value == '':
+            return queryset
+        try:
+            is_bookmarked = BOOKMARK_FILTER_VALUES[value.strip().lower()]
+        except KeyError:
+            raise ValidationError({BOOKMARK_FILTER_PARAM: [BOOKMARK_FILTER_ERROR]})
+        return queryset.filter(is_bookmarked=is_bookmarked)
 
     def create(self, request, *args, **kwargs):
         upload = DiagnosisCreateSerializer(data=request.data)

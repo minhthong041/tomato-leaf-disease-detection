@@ -273,6 +273,54 @@ class DiagnosisApiTests(APITestCase):
         self.assertEqual(history.status, DiagnosisHistory.Status.PENDING)
         self.assertIsNone(history.severity_level)
 
+    def test_filter_bookmarked(self):
+        saved = self.make_history(is_bookmarked=True)
+        not_saved = self.make_history()
+        self.make_history(user=self.other, is_bookmarked=True)  # của người khác: không bao giờ hiện
+
+        response = self.client.get(URL, {'is_bookmarked': 'true'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)  # count phân trang cũng theo bộ lọc
+        self.assertEqual([item['id'] for item in response.data['results']], [saved.pk])
+
+        response = self.client.get(URL, {'is_bookmarked': 'false'})
+        self.assertEqual([item['id'] for item in response.data['results']], [not_saved.pk])
+
+        # Không có tham số (hoặc để trống): lấy hết của mình
+        for params in ({}, {'is_bookmarked': ''}):
+            with self.subTest(params=params):
+                response = self.client.get(URL, params)
+                self.assertEqual({item['id'] for item in response.data['results']}, {saved.pk, not_saved.pk})
+
+    def test_filter_bookmarked_accepts_case_and_digits(self):
+        saved = self.make_history(is_bookmarked=True)
+        self.make_history()
+        for value in ('True', 'TRUE', '1'):
+            with self.subTest(value=value):
+                response = self.client.get(URL, {'is_bookmarked': value})
+                self.assertEqual([item['id'] for item in response.data['results']], [saved.pk])
+
+    def test_filter_bookmarked_invalid_value(self):
+        for value in ('yes', 'abc', '2'):
+            with self.subTest(value=value):
+                response = self.client.get(URL, {'is_bookmarked': value})
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn('is_bookmarked', response.data)
+
+    def test_filter_does_not_affect_detail(self):
+        # Bộ lọc chỉ dùng cho danh sách: xem chi tiết bản ghi chưa lưu vẫn được
+        history = self.make_history()
+        response = self.client.get(f'{URL}{history.pk}/', {'is_bookmarked': 'true'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_unbookmark(self):
+        history = self.make_history(is_bookmarked=True)
+        response = self.client.patch(f'{URL}{history.pk}/', {'is_bookmarked': False}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['is_bookmarked'])
+        history.refresh_from_db()
+        self.assertFalse(history.is_bookmarked)
+
     def test_put_and_delete_not_allowed(self):
         history = self.make_history()
         url = f'{URL}{history.pk}/'
