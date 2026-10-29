@@ -81,6 +81,44 @@ class EvaluateImageTests(TestCase):
         self.assertFalse(evaluate.is_near_threshold(0.0))
 
 
+class OverlayTests(TestCase):
+    def setUp(self):
+        self.base = np.full((SIZE, SIZE, 3), 100, np.uint8)
+        # Dự đoán và mask chuẩn lệch nhau: cột 0–19 chỉ có dự đoán, 20–39 có cả hai, 40–59 chỉ có mask chuẩn
+        self.pred = rect_mask(0, 0, 10, 40)
+        self.truth = rect_mask(0, 20, 10, 60)
+
+    def expected(self, color):
+        return ((1 - evaluate.OVERLAY_ALPHA) * 100 + evaluate.OVERLAY_ALPHA * np.array(color)).astype(np.uint8)
+
+    def test_color_comparison(self):
+        out = evaluate.color_comparison(self.base, self.pred, self.truth)
+        np.testing.assert_array_equal(out[5, 30], self.expected(evaluate.COLOR_CORRECT))
+        np.testing.assert_array_equal(out[5, 10], self.expected(evaluate.COLOR_FALSE_ALARM))
+        np.testing.assert_array_equal(out[5, 50], self.expected(evaluate.COLOR_MISSED))
+        np.testing.assert_array_equal(out[30, 30], self.base[30, 30]) # ngoài cả hai mask: giữ nguyên
+        self.assertEqual(self.base[5, 30].tolist(), [100, 100, 100]) # không sửa ảnh đầu vào
+
+    def test_draw_overlay_layout(self):
+        leaf = rect_mask(0, 0, 40, SIZE)
+        row = evaluate.evaluate_image(leaf, self.truth, leaf, self.pred)
+        panel = evaluate.draw_overlay(self.base, leaf, self.truth, leaf, self.pred, '#1 test', row)
+        self.assertEqual(panel.shape, (evaluate.HEADER_HEIGHT + SIZE + evaluate.FOOTER_HEIGHT, 3 * SIZE, 3))
+        self.assertEqual(panel.dtype, np.uint8)
+        top = evaluate.HEADER_HEIGHT
+        # Ô đầu là ảnh gốc; ô vết bệnh làm tối vùng ngoài lá chuẩn (hàng 50 nằm ngoài lá)
+        np.testing.assert_array_equal(panel[top + 50, 5], self.base[50, 5])
+        dimmed = (self.base[50, 5] * evaluate.OUTSIDE_LEAF_DIM).astype(np.uint8)
+        np.testing.assert_array_equal(panel[top + 50, 2 * SIZE + 5], dimmed)
+        np.testing.assert_array_equal(panel[top + 5, 2 * SIZE + 50], self.expected(evaluate.COLOR_MISSED))
+
+    def test_draw_overlay_empty_lesion_truth(self):
+        leaf = rect_mask(0, 0, 40, SIZE)
+        row = evaluate.evaluate_image(leaf, EMPTY, leaf, EMPTY)
+        panel = evaluate.draw_overlay(self.base, leaf, EMPTY, leaf, EMPTY, '', row)
+        self.assertEqual(panel.shape[1], 3 * SIZE)
+
+
 def write_png(path, image):
     path.parent.mkdir(parents=True, exist_ok=True)
     cv2.imencode('.png', image)[1].tofile(str(path))
@@ -128,6 +166,19 @@ class GroundTruthTests(TestCase):
         self.write_masks(self.leaf, rect_mask(0, 0, 3, 3, size=32))
         with self.assertRaises(ValueError):
             evaluate.load_ground_truth(self.list_file, self.root / 'masks')
+
+    def test_overlay_files(self):
+        self.write_masks(self.leaf, self.lesion)
+        items = evaluate.load_ground_truth(self.list_file, self.root / 'masks')
+        size = preprocessing.TARGET_SIZE
+        predicted = (items[0].leaf_mask, np.zeros((size, size), np.uint8))
+        with mock.patch.object(evaluate, 'predict_masks', return_value=predicted):
+            [row] = evaluate.evaluate_all(items, self.root / 'hinh')
+        self.assertEqual(row['loi'], '')
+        [path] = (self.root / 'hinh').iterdir()
+        self.assertEqual(path.name, '01_Early_blight_la 1.png')
+        panel = cv2.imdecode(np.fromfile(str(path), np.uint8), cv2.IMREAD_COLOR)
+        self.assertEqual(panel.shape, (evaluate.HEADER_HEIGHT + size + evaluate.FOOTER_HEIGHT, 3 * size, 3))
 
     def test_unimplemented_stage_is_skipped(self):
         self.write_masks(self.leaf, self.lesion)

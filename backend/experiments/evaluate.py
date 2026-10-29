@@ -3,6 +3,8 @@
 Chạy từ thư mục backend/ (cần ảnh PlantVillage và bộ mask chuẩn trong dataset/):
     python experiments/evaluate.py
 Bảng từng ảnh ghi vào experiments/output/evaluate.csv; bảng trung bình theo lớp in ra dạng Markdown.
+Thêm --overlay để lưu hình so sánh từng ảnh vào experiments/output/evaluate/ (xem draw_overlay):
+    python experiments/evaluate.py --overlay
 
 Bộ mask chuẩn
 - 30 ảnh trong dataset/splits/ground_truth.txt (3 ảnh mỗi lớp, chọn ngẫu nhiên từ test.txt, seed 42).
@@ -50,11 +52,23 @@ DATASET_DIR = BACKEND_DIR / 'dataset'
 GROUND_TRUTH_FILE = DATASET_DIR / 'splits' / 'ground_truth.txt'
 MASKS_DIR = DATASET_DIR / 'masks'
 OUTPUT_FILE = BACKEND_DIR / 'experiments' / 'output' / 'evaluate.csv'
+OVERLAY_DIR = BACKEND_DIR / 'experiments' / 'output' / 'evaluate'
 
 # Ngưỡng S% giữa các cấp, khớp severity.severity_level()
 SEVERITY_THRESHOLDS = (5, 15, 35)
 NEAR_THRESHOLD_PP = 1.0
 CLASS_PREFIX = 'Tomato___'
+
+# Màu BGR của hình so sánh: đúng (có ở cả dự đoán và mask chuẩn), báo nhầm (chỉ có ở dự đoán),
+# bỏ sót (chỉ có ở mask chuẩn)
+COLOR_CORRECT = (0, 200, 0)
+COLOR_FALSE_ALARM = (0, 0, 255)
+COLOR_MISSED = (255, 140, 0)
+OVERLAY_ALPHA = 0.6
+# Vùng ngoài lá chuẩn được làm tối đi để dễ nhìn vết bệnh
+OUTSIDE_LEAF_DIM = 0.4
+HEADER_HEIGHT = 56
+FOOTER_HEIGHT = 30
 
 CSV_COLUMNS = (
     'anh', 'lop', 'iou_la', 'iou_vet_benh', 'dice_vet_benh', 's_that', 's_du_doan', 'sai_so_s',
@@ -162,19 +176,87 @@ def evaluate_image(leaf_true: np.ndarray, lesion_true: np.ndarray,
     }
 
 
-def evaluate_all(items: list[GroundTruth]) -> list[dict]:
-    """Một dòng mỗi ảnh. Ảnh lỗi (giai đoạn chưa cài đặt, không đọc được) ghi lý do vào cột loi."""
+def color_comparison(base: np.ndarray, pred: np.ndarray, truth: np.ndarray) -> np.ndarray:
+    """Tô lên ảnh BGR các điểm đúng, báo nhầm và bỏ sót của mask dự đoán so với mask chuẩn."""
+    out = base.copy()
+    pred, truth = pred > 0, truth > 0
+    for pixels, color in ((pred & truth, COLOR_CORRECT), (pred & ~truth, COLOR_FALSE_ALARM),
+                          (~pred & truth, COLOR_MISSED)):
+        out[pixels] = ((1 - OVERLAY_ALPHA) * out[pixels] + OVERLAY_ALPHA * np.array(color)).astype(np.uint8)
+    return out
+
+
+def _put_text(image: np.ndarray, text: str, origin: tuple[int, int]) -> None:
+    cv2.putText(image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+
+
+def draw_overlay(image: np.ndarray, leaf_true: np.ndarray, lesion_true: np.ndarray,
+                 leaf_pred: np.ndarray, lesion_pred: np.ndarray, title: str = '',
+                 row: dict | None = None) -> np.ndarray:
+    """Hình so sánh một ảnh: ảnh gốc | so sánh mask lá | so sánh mask vết bệnh, mỗi ô cùng cỡ mask.
+
+    image là ảnh BGR đã resize về cỡ mask (chưa CLAHE, để giữ màu thật). Ở ô vết bệnh, vùng ngoài lá
+    chuẩn được làm tối. row (kết quả evaluate_image) nếu có thì in các chỉ số lên phần đầu hình.
+    """
+    dimmed = image.copy()
+    outside = leaf_true == 0
+    dimmed[outside] = (dimmed[outside] * OUTSIDE_LEAF_DIM).astype(np.uint8)
+    tiles = [image, color_comparison(image, leaf_pred, leaf_true),
+             color_comparison(dimmed, lesion_pred, lesion_true)]
+    height, width = image.shape[:2]
+    panel = np.zeros((HEADER_HEIGHT + height + FOOTER_HEIGHT, width * len(tiles), 3), np.uint8)
+    panel[HEADER_HEIGHT:HEADER_HEIGHT + height] = np.hstack(tiles)
+
+    # Font Hershey của cv2.putText chỉ vẽ được ký tự ASCII nên chữ trên hình viết không dấu
+    _put_text(panel, title, (10, 22))
+    if row:
+        lesion = 'khong co vet benh chuan' if row['iou_vet_benh'] is None else f'IoU {row["iou_vet_benh"]:.2f}'
+        level_pred = '-' if row['cap_du_doan'] is None else row['cap_du_doan']
+        _put_text(panel, f'La: IoU {row["iou_la"]:.2f}  |  Vet benh: {lesion}  |  '
+                         f'S that {row["s_that"]:.1f}% -> du doan {row["s_du_doan"]:.1f}%  |  '
+                         f'Cap {row["cap_that"]} -> {level_pred}', (10, 46))
+    for index, label in enumerate(('Anh goc', 'Mask la', 'Mask vet benh')):
+        _put_text(panel, label, (index * width + 10, HEADER_HEIGHT + 22))
+    legend_y = HEADER_HEIGHT + height + 21
+    x = 10
+    for color, label in ((COLOR_CORRECT, 'dung'), (COLOR_FALSE_ALARM, 'bao nham (thua)'),
+                         (COLOR_MISSED, 'bo sot (thieu)')):
+        cv2.rectangle(panel, (x, legend_y - 12), (x + 14, legend_y + 2), color, cv2.FILLED)
+        _put_text(panel, label, (x + 20, legend_y))
+        x += 40 + 10 * len(label)
+    return panel
+
+
+def save_image(path: Path, image: np.ndarray) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    success, encoded = cv2.imencode('.png', image)
+    if not success:
+        raise OSError(f'Không lưu được ảnh: {path}')
+    encoded.tofile(str(path)) # tofile thay cho cv2.imwrite để lưu được vào đường dẫn có dấu
+
+
+def evaluate_all(items: list[GroundTruth], overlay_dir: Path | None = None) -> list[dict]:
+    """Một dòng mỗi ảnh. Ảnh lỗi (giai đoạn chưa cài đặt, không đọc được) ghi lý do vào cột loi.
+
+    overlay_dir khác None thì lưu hình so sánh của từng ảnh vào đó; tên file bắt đầu bằng số thứ tự
+    trong ground_truth.txt (01–30) để cả nhóm gọi ảnh theo cùng một số.
+    """
     rows = []
-    for item in items:
+    for number, item in enumerate(items, start=1):
         row = {'anh': item.path.name, 'lop': item.disease.removeprefix(CLASS_PREFIX), 'loi': ''}
         try:
-            leaf_pred, lesion_pred = predict_masks(pipeline.load_image(item.path))
+            image = pipeline.load_image(item.path)
+            leaf_pred, lesion_pred = predict_masks(image)
         except NotImplementedError as exc:
             row['loi'] = f'chưa cài đặt: {exc}'
         except PipelineError as exc:
             row['loi'] = str(exc)
         else:
             row.update(evaluate_image(item.leaf_mask, item.lesion_mask, leaf_pred, lesion_pred))
+            if overlay_dir is not None:
+                panel = draw_overlay(preprocessing.resize(image), item.leaf_mask, item.lesion_mask,
+                                     leaf_pred, lesion_pred, f'#{number} {row["lop"]}', row)
+                save_image(Path(overlay_dir) / f'{number:02d}_{row["lop"]}_{item.path.stem}.png', panel)
         if row['loi']:
             print(f'Cảnh báo: bỏ qua {item.path.name}: {row["loi"]}', file=sys.stderr)
         rows.append(row)
@@ -258,11 +340,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--list', type=Path, default=GROUND_TRUTH_FILE, help='file danh sách ảnh chuẩn')
     parser.add_argument('--masks', type=Path, default=MASKS_DIR, help='thư mục chứa leaf/ và lesion/')
     parser.add_argument('--out', type=Path, default=OUTPUT_FILE, help='file CSV kết quả từng ảnh')
+    parser.add_argument('--overlay', nargs='?', type=Path, const=OVERLAY_DIR, default=None,
+                        help=f'lưu hình so sánh từng ảnh vào thư mục này (mặc định {OVERLAY_DIR})')
     args = parser.parse_args(argv)
 
-    rows = evaluate_all(load_ground_truth(args.list, args.masks))
+    rows = evaluate_all(load_ground_truth(args.list, args.masks), args.overlay)
     write_csv(rows, args.out)
-    print(f'Đã ghi {len(rows)} ảnh vào {args.out}\n')
+    print(f'Đã ghi {len(rows)} ảnh vào {args.out}')
+    if args.overlay is not None:
+        print(f'Hình so sánh lưu trong {args.overlay}')
+    print()
     print_summary(rows)
     return 0
 

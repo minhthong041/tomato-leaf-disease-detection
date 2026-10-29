@@ -149,6 +149,8 @@ python manage.py test api image_processing experiments
 
 # Đánh giá tách lá, vết bệnh và cấp độ so với 30 ảnh mask chuẩn (cần ảnh và mask trong dataset/)
 python experiments/evaluate.py
+# Thêm hình so sánh từng ảnh (xanh lá: đúng, đỏ: báo nhầm, xanh dương: bỏ sót) vào experiments/output/evaluate/
+python experiments/evaluate.py --overlay
 ```
 
 Ảnh có tên tiếng Việt vẫn đọc được: dùng `pipeline.load_image()` thay cho `cv2.imread()` (hàm này trả `None` với đường dẫn có dấu trên Windows).
