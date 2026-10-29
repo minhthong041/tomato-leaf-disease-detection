@@ -267,7 +267,7 @@ Database **không cho phép** `status = 'done'` khi còn thiếu một trong `di
 
 ### 4.4. Xóa tài khoản = ẩn danh hóa
 
-Tài khoản **không bao giờ bị xóa khỏi database**. Khi người dùng xóa tài khoản, gọi:
+Tài khoản **không bao giờ bị xóa khỏi database**. Khi người dùng xóa tài khoản (tự xóa qua `POST /api/auth/delete-account/`, hoặc quản trị viên dùng action trong admin), gọi:
 
 ```python
 user.anonymize()

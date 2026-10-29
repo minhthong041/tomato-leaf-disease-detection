@@ -27,6 +27,7 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Trang quản trị `/admin/` | Xong |
 | Đăng nhập JWT, CORS cho frontend | Xong |
 | Đăng ký tài khoản, trang điều khoản sử dụng | Xong — `POST /api/auth/register/` (đăng nhập luôn), trang `/register`, `/terms` |
+| Xóa tài khoản | Xong — `POST /api/auth/delete-account/` (nhập lại mật khẩu, ẩn danh hóa, thu hồi token), trang `/account` |
 | Khung pipeline và quy ước vào/ra ([docs/pipeline.md](docs/pipeline.md)) | Xong |
 | Chia dữ liệu train/test | Xong — 80/20 theo từng lớp ([experiments/split_dataset.py](backend/experiments/split_dataset.py), `dataset/splits/*.txt`); tên thư mục lớp phải trùng `diseases.code` |
 | Giai đoạn 1: tiền xử lý (resize, Bilateral, CLAHE) | Xong |
@@ -146,6 +147,7 @@ npm install                       # trong frontend/, khi package.json thay đổ
 | POST | `/api/auth/login/` | `{"email", "password"}` | `{"access", "refresh"}` |
 | POST | `/api/auth/refresh/` | `{"refresh"}` | Cặp token mới (refresh cũ bị vô hiệu) |
 | POST | `/api/auth/logout/` | `{"refresh"}` | Vô hiệu refresh token |
+| POST | `/api/auth/delete-account/` | `{"password"}` | 204; xóa tài khoản của chính mình (ẩn danh hóa, thu hồi mọi refresh token). Sai mật khẩu trả 400 |
 | POST | `/api/diagnoses/` | multipart, trường `image` (JPG/PNG, tối đa 10 MB) | Kết quả chẩn đoán, trạng thái `done` hoặc `failed` |
 | GET | `/api/diagnoses/` | | Lịch sử của người đang đăng nhập, mới nhất trước, 20 mục/trang |
 | GET | `/api/diagnoses/:id/` | | Chi tiết một lần chẩn đoán (ảnh từng bước, khuyến nghị IPM) |
