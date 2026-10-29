@@ -140,6 +140,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+# collectstatic gom file tĩnh (trang /admin/) vào đây; Docker: nginx phục vụ từ volume static
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Ảnh người dùng tải lên (ImageField). Muốn chuyển sang S3/Cloudinary thì đổi STORAGES.
 MEDIA_URL = 'media/'
