@@ -5,6 +5,7 @@ import { api } from './client';
 // POST /api/diagnoses/        (multipart, trường "image")  -> Diagnosis, status "done" hoặc "failed"
 //                             (chạy pipeline đồng bộ, trả về khi xử lý xong)
 // GET  /api/diagnoses/        -> { count, next, previous, results: [Diagnosis] } (20 mục/trang)
+//                             ?is_bookmarked=true chỉ lấy kết quả đã lưu
 // GET  /api/diagnoses/:id/    -> Diagnosis
 // PATCH /api/diagnoses/:id/   { is_bookmarked } -> Diagnosis
 //
@@ -26,8 +27,11 @@ export function createDiagnosis(file) {
   return api.post('/diagnoses/', form);
 }
 
-export function listDiagnoses(page = 1) {
-  return api.get(`/diagnoses/?page=${page}`);
+// bookmarkedOnly = true: chỉ lấy các kết quả đã lưu
+export function listDiagnoses(page = 1, { bookmarkedOnly = false } = {}) {
+  const params = new URLSearchParams({ page: String(page) });
+  if (bookmarkedOnly) params.set('is_bookmarked', 'true');
+  return api.get(`/diagnoses/?${params}`);
 }
 
 export function getDiagnosis(id) {
