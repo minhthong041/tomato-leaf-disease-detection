@@ -1,14 +1,16 @@
 from django.contrib.auth.models import update_last_login
+from django.db import transaction
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import DiagnosisHistory
 from .serializers import (
-    DiagnosisCreateSerializer, DiagnosisSerializer, ErrorReportSerializer, FeedbackSerializer,
-    RegisterSerializer,
+    DeleteAccountSerializer, DiagnosisCreateSerializer, DiagnosisSerializer, ErrorReportSerializer,
+    FeedbackSerializer, RegisterSerializer,
 )
 from .services import run_diagnosis
 
@@ -38,6 +40,34 @@ class RegisterView(generics.GenericAPIView):
             {'access': str(refresh.access_token), 'refresh': str(refresh)},
             status=status.HTTP_201_CREATED,
         )
+
+
+def revoke_refresh_tokens(user):
+    """Đưa mọi refresh token còn hiệu lực của user vào blacklist (đăng xuất trên mọi thiết bị)."""
+    pending = OutstandingToken.objects.filter(user=user, blacklistedtoken__isnull=True)
+    BlacklistedToken.objects.bulk_create(
+        [BlacklistedToken(token=token) for token in pending], ignore_conflicts=True,
+    )
+
+
+class DeleteAccountView(generics.GenericAPIView):
+    """POST /api/auth/delete-account/ {password} -> 204.
+
+    Không xóa cứng: gọi user.anonymize() để bỏ thông tin cá nhân nhưng giữ lịch sử chẩn đoán,
+    rồi thu hồi mọi refresh token. Access token đang dùng hết hiệu lực ngay vì tài khoản đã bị khóa.
+    Sai mật khẩu trả 400 (không phải 401, để frontend không tưởng là phiên đăng nhập hết hạn).
+    """
+
+    serializer_class = DeleteAccountSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = request.user
+        with transaction.atomic():
+            revoke_refresh_tokens(user)
+            user.anonymize()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class DiagnosisViewSet(

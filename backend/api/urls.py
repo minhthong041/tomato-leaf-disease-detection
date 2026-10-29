@@ -6,7 +6,9 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from .views import DiagnosisViewSet, ErrorReportCreateView, FeedbackCreateView, RegisterView
+from .views import (
+    DeleteAccountView, DiagnosisViewSet, ErrorReportCreateView, FeedbackCreateView, RegisterView,
+)
 
 router = SimpleRouter()
 # /diagnoses/ và /diagnoses/<id>/ — xem DiagnosisViewSet
@@ -21,6 +23,8 @@ urlpatterns = [
     path('auth/refresh/', TokenRefreshView.as_view(), name='auth-refresh'),
     # POST {"refresh"} -> đăng xuất (đưa refresh token vào blacklist)
     path('auth/logout/', TokenBlacklistView.as_view(), name='auth-logout'),
+    # POST {"password"} -> 204: xóa tài khoản của chính mình (ẩn danh hóa, thu hồi token)
+    path('auth/delete-account/', DeleteAccountView.as_view(), name='auth-delete-account'),
     # POST {"history", "title", "description"} -> phản hồi kết quả chẩn đoán sai
     path('feedbacks/', FeedbackCreateView.as_view(), name='feedback-create'),
     # POST {"title", "description"} -> báo lỗi ứng dụng

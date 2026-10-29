@@ -20,6 +20,9 @@ FULLNAME_MAX_LENGTH = 255  # trùng users.fullname
 EMAIL_TAKEN_MESSAGE = 'Email này đã được dùng để đăng ký.'
 TERMS_REQUIRED_MESSAGE = 'Bạn cần đồng ý điều khoản sử dụng để đăng ký.'
 
+# Xóa tài khoản
+WRONG_PASSWORD_MESSAGE = 'Mật khẩu không đúng.'
+
 # Phản hồi kết quả sai, báo lỗi
 REPORT_DESCRIPTION_MAX_LENGTH = 5000  # đủ cho một mô tả, chặn gửi văn bản quá dài
 HISTORY_NOT_FOUND_MESSAGE = 'Không tìm thấy lần chẩn đoán này.'
@@ -123,6 +126,17 @@ class RegisterSerializer(serializers.Serializer):
         except IntegrityError:
             # Hai yêu cầu đăng ký cùng email gần như đồng thời: ràng buộc unique của database chặn lại
             raise serializers.ValidationError({'email': [EMAIL_TAKEN_MESSAGE]})
+
+
+class DeleteAccountSerializer(serializers.Serializer):
+    """Xác nhận xóa tài khoản: nhập lại mật khẩu của tài khoản đang đăng nhập."""
+
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate_password(self, value):
+        if not self.context['request'].user.check_password(value):
+            raise serializers.ValidationError(WRONG_PASSWORD_MESSAGE)
+        return value
 
 
 class OwnDiagnosisField(serializers.PrimaryKeyRelatedField):
