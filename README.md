@@ -36,9 +36,9 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Giai đoạn 4: huấn luyện SVM / Random Forest | SVM xong (#18), Random Forest chưa làm |
 | Cấp độ 0–4 và khuyến nghị IPM | Xong |
 | Danh sách lớp bệnh (bảng `diseases`) | Xong — đủ 10 lớp lá cà chua của PlantVillage, nạp bằng migration |
-| API tải ảnh, lịch sử, kết quả, đánh dấu | Xong — chạy pipeline ngay trong request, trả `done` hoặc `failed` (ảnh không chẩn đoán được hoặc lỗi hệ thống) |
+| API tải ảnh, lịch sử, kết quả, đánh dấu | Xong — chạy pipeline ngay trong request, trả `done` hoặc `failed` (ảnh không chẩn đoán được hoặc lỗi hệ thống); lọc đã lưu bằng `?is_bookmarked=true` |
 | Phản hồi kết quả sai, báo lỗi | Xong — `POST /api/feedbacks/`, `POST /api/error-reports/`; nút "Báo kết quả sai" trên trang kết quả, trang `/error-report`; quản trị viên xử lý trong `/admin/` |
-| Giao diện frontend | Có khung: đăng nhập, đăng ký, điều khoản, tải ảnh, kết quả, lịch sử, phản hồi, báo lỗi — đã nối API |
+| Giao diện frontend | Có khung: đăng nhập, đăng ký, điều khoản, tải ảnh, kết quả (lưu / bỏ lưu), lịch sử (lọc đã lưu), phản hồi, báo lỗi — đã nối API |
 
 ## Công nghệ
 
