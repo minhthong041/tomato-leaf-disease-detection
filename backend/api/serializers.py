@@ -23,6 +23,8 @@ TERMS_REQUIRED_MESSAGE = 'Bạn cần đồng ý điều khoản sử dụng đ�
 # Phản hồi kết quả sai, báo lỗi
 REPORT_DESCRIPTION_MAX_LENGTH = 5000  # đủ cho một mô tả, chặn gửi văn bản quá dài
 HISTORY_NOT_FOUND_MESSAGE = 'Không tìm thấy lần chẩn đoán này.'
+# Lần chẩn đoán chưa có kết quả (pending/processing) hoặc lỗi (failed) thì dùng trang Báo lỗi
+HISTORY_NOT_DONE_MESSAGE = 'Chỉ gửi phản hồi được cho lần chẩn đoán đã có kết quả.'
 
 
 class DiseaseSerializer(serializers.ModelSerializer):
@@ -134,7 +136,8 @@ class OwnDiagnosisField(serializers.PrimaryKeyRelatedField):
         return DiagnosisHistory.objects.filter(user=self.context['request'].user)
 
     def to_internal_value(self, data):
-        if isinstance(data, bool):
+        # bool là con của int (True == 1), float bị Django làm tròn (1.5 -> 1): đều không phải mã hợp lệ
+        if isinstance(data, (bool, float)):
             self.fail('incorrect_type', data_type=type(data).__name__)
         try:
             return self.get_queryset().get(pk=data)
@@ -155,6 +158,12 @@ class FeedbackSerializer(serializers.ModelSerializer):
         model = Feedback
         fields = ('id', 'history', 'title', 'description', 'status', 'created_at')
         read_only_fields = ('status', 'created_at')
+
+    def validate_history(self, history):
+        # Chạy sau OwnDiagnosisField: bản ghi của người khác đã trả 404 trước khi tới đây
+        if history.status != DiagnosisHistory.Status.DONE:
+            raise serializers.ValidationError(HISTORY_NOT_DONE_MESSAGE)
+        return history
 
 
 class ErrorReportSerializer(serializers.ModelSerializer):

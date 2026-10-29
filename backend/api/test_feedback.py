@@ -1,10 +1,12 @@
 """Test phản hồi kết quả sai (POST /api/feedbacks/) và báo lỗi (POST /api/error-reports/)."""
+from decimal import Decimal
+
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from . import serializers
-from .models import DiagnosisHistory, ErrorReport, Feedback, User
+from .models import DiagnosisHistory, Disease, ErrorReport, Feedback, User
 
 FEEDBACK_URL = '/api/feedbacks/'
 ERROR_REPORT_URL = '/api/error-reports/'
@@ -16,14 +18,30 @@ def make_user(email, **extra):
     )
 
 
+def make_history(user, status=DiagnosisHistory.Status.DONE):
+    """Lần chẩn đoán của user. Trạng thái done cần đủ cột kết quả (CHECK constraint dh_done_requires_result)."""
+    # Gán đường dẫn có sẵn -> không đọc file ảnh
+    fields = {'user': user, 'original_image': 'uploads/thu.jpg', 'status': status}
+    if status == DiagnosisHistory.Status.DONE:
+        fields.update(
+            disease=Disease.objects.get(code='Tomato___Early_blight'),
+            disease_confidence=Decimal('0.9100'),
+            severity_level=DiagnosisHistory.SeverityLevel.MODERATE,
+            leaf_area_px=10000,
+            lesion_area_px=850,
+            infected_ratio=Decimal('0.0850'),
+            lesion_count=3,
+        )
+    return DiagnosisHistory.objects.create(**fields)
+
+
 class ReportTestCase(APITestCase):
     @classmethod
     def setUpTestData(cls):
         cls.user = make_user('tv4@example.com')
         cls.other = make_user('khac@example.com')
-        # Gán đường dẫn có sẵn -> không đọc file ảnh
-        cls.history = DiagnosisHistory.objects.create(user=cls.user, original_image='uploads/thu.jpg')
-        cls.other_history = DiagnosisHistory.objects.create(user=cls.other, original_image='uploads/khac.jpg')
+        cls.history = make_history(cls.user)
+        cls.other_history = make_history(cls.other)
 
     def setUp(self):
         self.client.force_authenticate(self.user)
@@ -71,10 +89,28 @@ class FeedbackTests(ReportTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertTrue({'history', 'description'} <= set(response.data))
 
+    def test_history_without_result_returns_400(self):
+        # Chưa có kết quả hoặc lỗi: không "báo kết quả sai" được, dùng trang Báo lỗi
+        Status = DiagnosisHistory.Status
+        for status_value in (Status.PENDING, Status.PROCESSING, Status.FAILED):
+            with self.subTest(status=status_value):
+                history = make_history(self.user, status=status_value)
+                response = self.post(history=history.pk)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertEqual(response.data['history'], [serializers.HISTORY_NOT_DONE_MESSAGE])
+        self.assertFalse(Feedback.objects.exists())
+
+    def test_other_users_unfinished_history_still_404(self):
+        # Không lộ trạng thái bản ghi của người khác: vẫn 404, không phải 400
+        history = make_history(self.other, status=DiagnosisHistory.Status.FAILED)
+        self.assertEqual(self.post(history=history.pk).status_code, status.HTTP_404_NOT_FOUND)
+
     def test_history_wrong_type_returns_400(self):
-        for value in ('abc', True, [1]):
+        # 1.5 không được làm tròn thành bản ghi id 1
+        for value in ('abc', True, [1], 1.5, float(self.history.pk), '1.5'):
             with self.subTest(value=value):
                 self.assertEqual(self.post(history=value).status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Feedback.objects.exists())
 
     def test_too_long_description_returns_400(self):
         response = self.post(description='a' * (serializers.REPORT_DESCRIPTION_MAX_LENGTH + 1))
