@@ -32,7 +32,7 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Giai đoạn 1: tiền xử lý (resize, Bilateral, CLAHE) | Xong |
 | Giai đoạn 2–3: tách lá, tách đốm bệnh | Xong bản đầu, ngưỡng đốm bệnh còn tạm thời |
 | Giai đoạn 4: trích đặc trưng GLCM + Color Moments | Xong |
-| Giai đoạn 4: huấn luyện SVM / Random Forest | SVM xong (#18), Random Forest chưa làm |
+| Giai đoạn 4: huấn luyện SVM / Random Forest | SVM xong (#18), đã huấn luyện lại trên `segment_leaf` thật (3C): accuracy 0,850, macro F1 0,809; Random Forest làm ở 3E |
 | Cấp độ 0–4 và khuyến nghị IPM | Xong |
 | Danh sách lớp bệnh (bảng `diseases`) | Xong — đủ 10 lớp lá cà chua của PlantVillage, nạp bằng migration |
 | API tải ảnh, lịch sử, kết quả, đánh dấu | Xong — chạy pipeline ngay trong request, trả `done` hoặc `failed` (ảnh không chẩn đoán được hoặc lỗi hệ thống) |
