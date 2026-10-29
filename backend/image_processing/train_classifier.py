@@ -9,6 +9,7 @@ import cv2
 import joblib
 import matplotlib
 import numpy as np
+from joblib import Parallel, delayed
 
 matplotlib.use("Agg")
 
@@ -34,7 +35,10 @@ OUTPUT_DIR = BACKEND_DIR / "experiments" / "output"
 
 VALID_SPLITS = ("train", "test")
 FEATURE_CACHE_VERSION = "3c-v1"
-
+FEATURE_N_JOBS = -1  # số tiến trình trích đặc trưng song song, -1 là dùng hết CPU
+FEATURE_RNG_SEED = (
+    0  # GrabCut khởi tạo ngẫu nhiên: cố định seed để mỗi ảnh luôn ra cùng một mask
+)
 DISEASE_NAMES = {
     "Tomato___Bacterial_spot": "Đốm vi khuẩn",
     "Tomato___Early_blight": "Đốm vòng",
@@ -96,12 +100,34 @@ def feature_signature(paths: list[Path]) -> str:
     return hasher.hexdigest()
 
 
+def _features_for_path(path: Path) -> np.ndarray:
+    """Tiền xử lý, tách lá và trích đặc trưng cho một ảnh."""
+    # Mỗi tiến trình chỉ dùng 1 luồng OpenCV để các tiến trình không giành CPU của nhau
+    cv2.setNumThreads(1)
+    cv2.setRNGSeed(FEATURE_RNG_SEED)
+    try:
+        image = load_image(path)
+        processed, _ = preprocessing.preprocess(image)
+        mask = leaf_mask_for(processed)
+        vector = np.asarray(
+            classifier.extract_features(processed, mask), dtype=np.float64
+        )
+        if vector.shape != (len(classifier.FEATURE_NAMES),):
+            raise ValueError(f"Vector đặc trưng sai kích thước: {vector.shape}")
+        if not np.isfinite(vector).all():
+            raise ValueError("Vector đặc trưng chứa NaN hoặc Inf")
+        return vector
+    except Exception as exc:
+        raise RuntimeError(f"Không thể trích đặc trưng ảnh: {path}") from exc
+
+
 def build_features(
     paths: list[Path],
     split: str | None = None,
     use_cache: bool = True,
+    n_jobs: int = FEATURE_N_JOBS,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Trích xuất đặc trưng và lưu cache theo tập dữ liệu."""
+    """Trích xuất đặc trưng song song và lưu cache theo tập dữ liệu."""
     paths = [Path(path) for path in paths]
     if not paths:
         raise ValueError("Danh sách ảnh rỗng")
@@ -135,32 +161,15 @@ def build_features(
         except (OSError, ValueError, KeyError, EOFError):
             pass
 
-    features = []
-    labels = []
     start = time.perf_counter()
-
-    for index, path in enumerate(paths, start=1):
-        try:
-            image = load_image(path)
-            processed, _ = preprocessing.preprocess(image)
-            mask = leaf_mask_for(processed)
-            vector = np.asarray(
-                classifier.extract_features(processed, mask), dtype=np.float64
-            )
-            if vector.shape != (len(classifier.FEATURE_NAMES),):
-                raise ValueError(f"Vector đặc trưng sai kích thước: {vector.shape}")
-            if not np.isfinite(vector).all():
-                raise ValueError("Vector đặc trưng chứa NaN hoặc Inf")
-            features.append(vector)
-            labels.append(path.parent.name)
-        except Exception as exc:
-            raise RuntimeError(f"Không thể trích đặc trưng ảnh: {path}") from exc
-
-        if index % 100 == 0 or index == len(paths):
-            print(f"[{index}/{len(paths)}] {time.perf_counter() - start:.1f}s")
+    # Parallel trả kết quả theo đúng thứ tự paths nên X và y luôn khớp nhau
+    features = Parallel(n_jobs=n_jobs, verbose=5)(
+        delayed(_features_for_path)(path) for path in paths
+    )
+    print(f"Trích đặc trưng {len(paths)} ảnh: {time.perf_counter() - start:.1f}s")
 
     X = np.asarray(features, dtype=np.float64)
-    y = np.asarray(labels, dtype=str)
+    y = np.asarray([path.parent.name for path in paths], dtype=str)
 
     if cache_path is not None:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
