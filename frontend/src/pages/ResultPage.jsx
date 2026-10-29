@@ -7,6 +7,7 @@ import { Link, useParams } from 'react-router';
 
 import { errorMessage } from '../api/client';
 import { getDiagnosis } from '../api/diagnoses';
+import FeedbackDialog from '../components/FeedbackDialog';
 import SeverityGauge from '../components/SeverityGauge';
 import StepGallery from '../components/StepGallery';
 import { STATUS_LABELS, formatPercent } from '../constants/diagnosis';
@@ -74,7 +75,11 @@ export default function ResultPage() {
   const { disease } = diagnosis;
   return (
     <Stack spacing={3}>
-      {backButton}
+      <Stack direction="row" spacing={1} useFlexGap
+        sx={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+        {backButton}
+        <FeedbackDialog historyId={diagnosis.id} />
+      </Stack>
 
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
         <Card>

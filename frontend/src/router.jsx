@@ -22,6 +22,7 @@ const router = createBrowserRouter([
           { path: '/', lazy: page(() => import('./pages/UploadPage')) },
           { path: '/results/:id', lazy: page(() => import('./pages/ResultPage')) },
           { path: '/history', lazy: page(() => import('./pages/HistoryPage')) },
+          { path: '/error-report', lazy: page(() => import('./pages/ErrorReportPage')) },
         ],
       },
       { path: '*', element: <NotFoundPage /> },

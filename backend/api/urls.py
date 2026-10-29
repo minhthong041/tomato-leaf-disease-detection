@@ -6,7 +6,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from .views import DiagnosisViewSet, RegisterView
+from .views import DiagnosisViewSet, ErrorReportCreateView, FeedbackCreateView, RegisterView
 
 router = SimpleRouter()
 # /diagnoses/ và /diagnoses/<id>/ — xem DiagnosisViewSet
@@ -21,5 +21,9 @@ urlpatterns = [
     path('auth/refresh/', TokenRefreshView.as_view(), name='auth-refresh'),
     # POST {"refresh"} -> đăng xuất (đưa refresh token vào blacklist)
     path('auth/logout/', TokenBlacklistView.as_view(), name='auth-logout'),
+    # POST {"history", "title", "description"} -> phản hồi kết quả chẩn đoán sai
+    path('feedbacks/', FeedbackCreateView.as_view(), name='feedback-create'),
+    # POST {"title", "description"} -> báo lỗi ứng dụng
+    path('error-reports/', ErrorReportCreateView.as_view(), name='error-report-create'),
     *router.urls,
 ]

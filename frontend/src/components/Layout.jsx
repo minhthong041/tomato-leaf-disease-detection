@@ -1,3 +1,4 @@
+import BugReportIcon from '@mui/icons-material/BugReport';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import HistoryIcon from '@mui/icons-material/History';
 import LogoutIcon from '@mui/icons-material/Logout';
@@ -32,6 +33,9 @@ export default function Layout() {
               </Button>
               <Button color="inherit" component={Link} to="/history" startIcon={<HistoryIcon />}>
                 Lịch sử
+              </Button>
+              <Button color="inherit" component={Link} to="/error-report" startIcon={<BugReportIcon />}>
+                Báo lỗi
               </Button>
               <Button color="inherit" onClick={handleLogout} startIcon={<LogoutIcon />}>
                 Đăng xuất

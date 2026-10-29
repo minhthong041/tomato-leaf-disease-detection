@@ -4,10 +4,11 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from PIL import Image
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound
 
 from image_processing.severity import IPM_RECOMMENDATIONS
 
-from .models import DiagnosisHistory, DiagnosisStep, Disease, User
+from .models import DiagnosisHistory, DiagnosisStep, Disease, ErrorReport, Feedback, User
 
 # Ảnh tải lên: chỉ nhận JPG/PNG, tối đa MAX_UPLOAD_MB
 ALLOWED_IMAGE_FORMATS = ('JPEG', 'PNG')
@@ -18,6 +19,12 @@ MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 FULLNAME_MAX_LENGTH = 255  # trùng users.fullname
 EMAIL_TAKEN_MESSAGE = 'Email này đã được dùng để đăng ký.'
 TERMS_REQUIRED_MESSAGE = 'Bạn cần đồng ý điều khoản sử dụng để đăng ký.'
+
+# Phản hồi kết quả sai, báo lỗi
+REPORT_DESCRIPTION_MAX_LENGTH = 5000  # đủ cho một mô tả, chặn gửi văn bản quá dài
+HISTORY_NOT_FOUND_MESSAGE = 'Không tìm thấy lần chẩn đoán này.'
+# Lần chẩn đoán chưa có kết quả (pending/processing) hoặc lỗi (failed) thì dùng trang Báo lỗi
+HISTORY_NOT_DONE_MESSAGE = 'Chỉ gửi phản hồi được cho lần chẩn đoán đã có kết quả.'
 
 
 class DiseaseSerializer(serializers.ModelSerializer):
@@ -116,3 +123,55 @@ class RegisterSerializer(serializers.Serializer):
         except IntegrityError:
             # Hai yêu cầu đăng ký cùng email gần như đồng thời: ràng buộc unique của database chặn lại
             raise serializers.ValidationError({'email': [EMAIL_TAKEN_MESSAGE]})
+
+
+class OwnDiagnosisField(serializers.PrimaryKeyRelatedField):
+    """Mã lần chẩn đoán của chính người đang đăng nhập.
+
+    Mã không tồn tại hoặc thuộc người khác đều trả 404 (giống GET /api/diagnoses/:id/),
+    để không lộ việc bản ghi của người khác có tồn tại hay không.
+    """
+
+    def get_queryset(self):
+        return DiagnosisHistory.objects.filter(user=self.context['request'].user)
+
+    def to_internal_value(self, data):
+        # bool là con của int (True == 1), float bị Django làm tròn (1.5 -> 1): đều không phải mã hợp lệ
+        if isinstance(data, (bool, float)):
+            self.fail('incorrect_type', data_type=type(data).__name__)
+        try:
+            return self.get_queryset().get(pk=data)
+        except (TypeError, ValueError, DjangoValidationError):
+            self.fail('incorrect_type', data_type=type(data).__name__)
+        except DiagnosisHistory.DoesNotExist:
+            # NotFound không phải ValidationError nên is_valid() để nó đi thẳng ra thành 404
+            raise NotFound(HISTORY_NOT_FOUND_MESSAGE)
+
+
+class FeedbackSerializer(serializers.ModelSerializer):
+    """POST /api/feedbacks/ {history, title, description}: báo một kết quả chẩn đoán bị sai."""
+
+    history = OwnDiagnosisField()
+    description = serializers.CharField(max_length=REPORT_DESCRIPTION_MAX_LENGTH)
+
+    class Meta:
+        model = Feedback
+        fields = ('id', 'history', 'title', 'description', 'status', 'created_at')
+        read_only_fields = ('status', 'created_at')
+
+    def validate_history(self, history):
+        # Chạy sau OwnDiagnosisField: bản ghi của người khác đã trả 404 trước khi tới đây
+        if history.status != DiagnosisHistory.Status.DONE:
+            raise serializers.ValidationError(HISTORY_NOT_DONE_MESSAGE)
+        return history
+
+
+class ErrorReportSerializer(serializers.ModelSerializer):
+    """POST /api/error-reports/ {title, description}: báo lỗi ứng dụng. Người gửi lấy từ tài khoản đăng nhập."""
+
+    description = serializers.CharField(max_length=REPORT_DESCRIPTION_MAX_LENGTH)
+
+    class Meta:
+        model = ErrorReport
+        fields = ('id', 'title', 'description', 'is_resolved', 'created_at')
+        read_only_fields = ('is_resolved', 'created_at')

@@ -5,7 +5,10 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import DiagnosisHistory
-from .serializers import DiagnosisCreateSerializer, DiagnosisSerializer, RegisterSerializer
+from .serializers import (
+    DiagnosisCreateSerializer, DiagnosisSerializer, ErrorReportSerializer, FeedbackSerializer,
+    RegisterSerializer,
+)
 from .services import run_diagnosis
 
 
@@ -63,3 +66,23 @@ class DiagnosisViewSet(
         run_diagnosis(history)
         history = self.get_queryset().get(pk=history.pk)
         return Response(self.get_serializer(history).data, status=status.HTTP_201_CREATED)
+
+
+class FeedbackCreateView(generics.CreateAPIView):
+    """POST /api/feedbacks/ {history, title, description}.
+
+    Chỉ gửi được cho lần chẩn đoán của chính mình; mã của người khác hoặc không tồn tại trả 404.
+    Trạng thái duyệt (status) do quản trị viên đổi trong /admin/.
+    """
+
+    serializer_class = FeedbackSerializer
+
+
+class ErrorReportCreateView(generics.CreateAPIView):
+    """POST /api/error-reports/ {title, description}. Quản trị viên xử lý trong /admin/."""
+
+    serializer_class = ErrorReportSerializer
+
+    def perform_create(self, serializer):
+        # Người gửi luôn là tài khoản đang đăng nhập, không nhận từ dữ liệu gửi lên
+        serializer.save(user=self.request.user)
