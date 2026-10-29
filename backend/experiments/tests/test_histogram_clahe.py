@@ -55,6 +55,15 @@ class FigureTests(TestCase):
                     self.assertTrue(0 < kept_edge and 0 < kept_flat)
                     self.assertAlmostEqual(ratio, kept_edge / kept_flat, places=5) # gradient tính bằng float32
 
+    def test_empty_leaf_mask_raises(self):
+        with self.assertRaises(ValueError):
+            histogram_clahe.plot_clahe(self.image_path, self.tmp / 'a.png', np.zeros((SIZE, SIZE), np.uint8))
+        self.assertFalse((self.tmp / 'a.png').exists())
+
+    def test_mask_covering_whole_image_raises(self):
+        with self.assertRaises(ValueError):
+            histogram_clahe.compare_denoise(self.image_path, self.tmp / 'b.png', np.full((SIZE, SIZE), 255, np.uint8))
+
 
 class ZoomBoxTests(TestCase):
     def test_box_stays_inside_image_near_corner(self):
@@ -77,6 +86,12 @@ class EdgeMetricsTests(TestCase):
         image = preprocessing.resize(leaf_image())
         edge = histogram_clahe._edge_band(circle_mask((256, 256), 180))
         self.assertEqual(histogram_clahe.edge_metrics(image, image, edge), (1.0, 1.0, 1.0))
+
+    def test_flat_image_raises_instead_of_nan(self):
+        image = np.full((SIZE, SIZE, 3), 128, np.uint8)
+        edge = histogram_clahe._edge_band(circle_mask((256, 256), 180))
+        with self.assertRaises(ValueError):
+            histogram_clahe.edge_metrics(image, image, edge)
 
 
 class MainTests(TestCase):

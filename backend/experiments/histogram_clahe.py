@@ -93,6 +93,8 @@ def plot_clahe(image_path: Path, out_path: Path, leaf_mask: np.ndarray | None = 
     leaf_mask (512x512, 0/255): nếu có thì histogram chỉ tính trên vùng lá.
     Trả về (độ lệch chuẩn L trước, sau).
     """
+    if leaf_mask is not None and not leaf_mask.any():
+        raise ValueError(f'Mask lá rỗng, không vẽ được histogram: {image_path}')
     before = preprocessing.denoise(_load_resized(image_path))
     after = preprocessing.equalize(before)
     region = 'vùng lá' if leaf_mask is not None else 'cả ảnh'
@@ -144,13 +146,18 @@ def zoom_box(edge: np.ndarray, strength: np.ndarray, size: int = ZOOM_SIZE) -> t
 def edge_metrics(original: np.ndarray, filtered: np.ndarray, edge: np.ndarray) -> tuple[float, float, float]:
     """(giữ cạnh, còn ở vùng phẳng, độ nổi cạnh) của ảnh đã lọc so với ảnh gốc, định nghĩa ở đầu file.
 
-    edge: dải mép (bool, cùng cỡ ảnh).
+    edge: dải mép (bool, cùng cỡ ảnh). Báo ValueError thay vì trả về nan khi không tính được tỉ lệ.
     """
     distance = cv2.distanceTransform((~edge).astype(np.uint8), cv2.DIST_L2, 3)
     flat = distance >= FLAT_DISTANCE_PX
+    if not edge.any() or not flat.any():
+        raise ValueError('Không có dải mép hoặc vùng phẳng để so sánh (mask rỗng hoặc phủ kín ảnh?)')
     before, after = _gradient(_lightness(original)), _gradient(_lightness(filtered))
-    kept_edge = after[edge].mean() / before[edge].mean()
-    kept_flat = after[flat].mean() / before[flat].mean()
+    edge_before, flat_before = before[edge].mean(), before[flat].mean()
+    if edge_before == 0 or flat_before == 0:
+        raise ValueError('Ảnh gốc không có gradient ở mép hoặc vùng phẳng (ảnh phẳng?), không tính được tỉ lệ')
+    kept_edge = after[edge].mean() / edge_before
+    kept_flat = after[flat].mean() / flat_before
     return float(kept_edge), float(kept_flat), float(kept_edge / kept_flat)
 
 
