@@ -7,7 +7,7 @@ import matplotlib
 import numpy as np
 
 from experiments import evaluate, visualize_morphology
-from image_processing import segmentation, steps
+from image_processing import pipeline, segmentation, steps
 
 
 class MorphologyFigureTests(TestCase):
@@ -17,11 +17,11 @@ class MorphologyFigureTests(TestCase):
         cv2.ellipse(
             self.image, (48, 48), (35, 30), 0, 0, 360, (0, 170, 0), -1,
         )
-        self.leaf = visualize_morphology._leaf_segmentation_stages(
-            self.image,
-        )[-1]
-        # Đốm nâu ở giữa lá; mask bệnh lấy từ segment_lesions thật để khớp kiểm tra của plot_morphology
         cv2.circle(self.image, (48, 48), 8, (30, 60, 140), -1)
+        # Mask lấy từ segment_leaf và segment_lesions thật: nếu hai hàm này đổi mà script minh họa
+        # không sửa theo, kiểm tra khớp trong plot_morphology sẽ báo lỗi ngay cả khi CI không có dataset
+        cv2.setRNGSeed(pipeline.RNG_SEED)
+        self.leaf, _ = segmentation.segment_leaf(self.image)
         self.lesion, intermediates = segmentation.segment_lesions(self.image, self.leaf)
         self.raw_lesion = intermediates[steps.LESION_MASK_RAW]
         self.assertGreater(cv2.countNonZero(self.lesion), 0)

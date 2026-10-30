@@ -85,6 +85,7 @@ trước khi chốt thuật toán LAB; cột main phản ánh mã segmentation h
 | Dice vết bệnh | 0.286 | 0.320 |
 | Sai số S tuyệt đối trung bình (điểm %) | 7.49 | 6.54 |
 | Đúng cấp | 53.3% | 50.0% |
+| Lệch ≤ 1 cấp | 83.3% | 90.0% |
 | Báo nhầm trên ảnh có mask bệnh rỗng | 8/9 | 6/9 |
 
 | Lớp | IoU vết bệnh trước 2C → main | Sai số S trước 2C → main (điểm %) | Báo nhầm trước 2C → main |
@@ -96,11 +97,21 @@ trước khi chốt thuật toán LAB; cột main phản ánh mã segmentation h
 | Lá khỏe | — | — | 3/3 → 2/3 |
 
 IoU/Dice vết bệnh và sai số S trung bình toàn bộ được cải thiện; tỷ lệ đúng
-cấp giảm từ 53.3% xuống 50.0%. Kết quả theo lớp không đồng nhất: Early blight
+cấp giảm từ 53.3% xuống 50.0%, nhưng tỷ lệ lệch không quá 1 cấp tăng từ 83.3%
+lên 90.0%, tức các ảnh sai cấp nằm gần cấp đúng hơn. Kết quả theo lớp không đồng nhất: Early blight
 có IoU giảm và sai số S tăng, trong khi Target Spot cải thiện cả IoU và sai số
 S. Một ảnh Early blight (`RS_Erly.B 7617`) có 24.376/31.944 pixel mask bệnh
 nằm ngoài `leaf_mask` dự đoán. Giai đoạn 3 không thể khôi phục các pixel này
 mà không vi phạm hợp đồng mask con hoặc thay đổi `segment_leaf`.
+
+Ca Septoria `Matt.S_CG 1072` sai theo kiểu khác. Phần lá còn sống có màu xanh
+vàng nên không có pixel nào đạt điều kiện mô khỏe tham chiếu (0 pixel trong
+`healthy_mask`), hàm phải dùng mốc dự phòng `HEALTHY_REF_FALLBACK_LAB`. So với
+mốc xanh của lá khỏe, mô xanh vàng bị tính là vết bệnh: 44.815 pixel báo nhầm,
+khoảng 69% phần mô không bệnh theo mask chuẩn. Trong khi đó, mảng mô chết nâu
+lại nằm ngoài `leaf_mask` dự đoán (60.785/71.480 pixel mask bệnh chuẩn). S dự
+đoán là 67.5% so với S thật 52.4%; cấp vẫn đúng (Cấp 4) chỉ vì cả hai đều trên
+35%. Hình `13_..._Matt.S_CG 1072_morphology.png` cho thấy rõ hai lỗi này.
 
 ## Hình minh họa
 
