@@ -36,6 +36,14 @@ export function formatPercent(ratio, digits = 2) {
 // Tạm đặt 0,6; cập nhật theo đề xuất ngưỡng của việc 3E (đánh giá mô hình).
 export const LOW_CONFIDENCE_THRESHOLD = 0.6;
 
+// Bệnh do virus: lá xoăn, vàng hoặc khảm màu chứ không có đốm riêng, nên Cấp 0 (không tách được vết bệnh)
+// là kết quả bình thường. Bộ mask chuẩn 1D: 6/6 ảnh của hai lớp này có mask vết bệnh rỗng.
+// Trùng diseases.code ở backend.
+export const NO_LESION_DISEASE_CODES = [
+  'Tomato___Tomato_Yellow_Leaf_Curl_Virus',
+  'Tomato___Tomato_mosaic_virus',
+];
+
 // Các lý do nên nghi ngờ một kết quả đã xong (status "done"). Trả mảng câu cảnh báo, rỗng nếu không có gì.
 export function resultWarnings(diagnosis) {
   const warnings = [];
@@ -52,7 +60,7 @@ export function resultWarnings(diagnosis) {
   if (disease && level != null) {
     if (disease.is_healthy && level >= 1) {
       warnings.push(`Mô hình kết luận lá khỏe nhưng vẫn phát hiện vết bệnh (Cấp ${level}).`);
-    } else if (!disease.is_healthy && level === 0) {
+    } else if (!disease.is_healthy && level === 0 && !NO_LESION_DISEASE_CODES.includes(disease.code)) {
       warnings.push(`Mô hình kết luận ${disease.name} nhưng không phát hiện vết bệnh nào (Cấp 0).`);
     }
   }
