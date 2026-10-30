@@ -80,17 +80,29 @@ nền có khả năng; chỉ pixel hoại tử bão hòa cao, Hue 15–24 hoặc
 cách seed tối đa 20 pixel mới được khôi phục sau phân đoạn. Sau đó chỉ closing
 hình thái bằng kernel elip 5×5 chạy một lần, không opening/erosion, nhằm tránh
 làm đứt cuống. Contour ngoài lớn nhất cùng các contour có diện tích ít nhất 3%
-diện tích contour lớn nhất được tô kín. Tách mô khỏe xét đồng thời Hue,
-Saturation và Value; mô trung tính ít bão hòa không bị tính thành đốm. Khi
-tách đốm, vùng cách biên `leaf_mask` tối đa 5 pixel cũng bị loại để hạn chế
-bóng đổ sát mép lá bị nhận nhầm là bệnh.
-Opening, closing và ngưỡng diện tích thành phần tối thiểu trong bước tách đốm
-loại nhiễu nhỏ. `lesion_mask` luôn là tập con của `leaf_mask`.
+diện tích contour lớn nhất được tô kín.
 
-*Ghi chú:* Ngưỡng Hue/Saturation/Value đốm bệnh được lựa chọn trên tập huấn
-luyện (train) theo tiêu chí tối ưu tỷ lệ lá khỏe bị xếp cấp >= 2 thấp nhất và
-không làm giảm tỷ lệ nhận diện bệnh xoăn vàng lá (Yellow Leaf Curl). Đây là
-ngưỡng tạm thời cho đến khi có bộ mask đốm bệnh tô tay (ground truth).
+**Tách vết bệnh** (`segment_lesions`) so màu từng điểm với mô xanh khỏe của
+chính lá đó trong không gian LAB: mốc là trung vị L\*, a\*, b\* của các điểm
+xanh bão hòa trong lá (H 40–85, S và V ≥ 40; ảnh `healthy_mask`), nên ngưỡng
+không phụ thuộc độ sáng hay cân bằng trắng của ảnh. Lá có ít hơn 100 điểm như
+vậy (bệnh nặng) dùng mốc cố định `HEALTHY_REF_FALLBACK_LAB` = (124, −14, 16),
+trung vị mô xanh của 60 lá khỏe tập train; không lấy trung vị cả lá vì mốc sẽ
+bị kéo về màu vết bệnh. Một điểm là vết bệnh khi
+a\* lệch về phía đỏ/nâu ít nhất 12, hoặc lệch vàng đậm (a\* ≥ 3 và b\* ≥ 8),
+hoặc là mô hoại tử tối có Hue ngoài dải xanh 35–85 và L\* thấp hơn mốc ít nhất
+20 (thang 8 bit của OpenCV). Bị loại: điểm gần như không màu (độ sắc < 8; trừ
+mô chết nâu đen cách mép lá hơn 25 pixel, tối hơn mốc ít nhất 20 và a\* lệch đỏ
+ít nhất 5, vì bóng đổ không nằm sâu trong lá), bóng
+đổ tối ít màu (độ sắc < 10, V < 90) trong dải 15 pixel sát mép lá, và mọi điểm
+cách biên `leaf_mask` tối đa 5 pixel. Sau đó opening và closing kernel elip
+5×5, bỏ thành phần nhỏ hơn 40 pixel. `lesion_mask` luôn là tập con của
+`leaf_mask`.
+
+*Ghi chú:* Ngưỡng tách vết bệnh được chọn ở đợt 3 (việc 2C) trên 30 ảnh có
+mask chuẩn (`python experiments/evaluate.py`), rồi kiểm tra lại trên ảnh tập
+train không có mask (60 lá khỏe, 12 ảnh mỗi lớp bệnh) để tránh chỉnh quá khớp
+30 ảnh.
 
 ### Giới hạn đã biết (Known Limitations)
 
@@ -101,6 +113,20 @@ ngưỡng tạm thời cho đến khi có bộ mask đốm bệnh tô tay (groun
   màu gần mô lá vẫn có thể bị nhận nhầm. Khe hẹp hơn kernel closing 5×5 có
   thể bị nối. Các contour nhỏ hơn 3% diện tích contour lớn nhất bị loại;
   vùng lá tách xa seed xanh có thể bị bỏ sót khỏi `leaf_mask`.
+- Mảng mô chết lớn màu nâu xám (Early blight, Septoria, mép lá cháy) thường bị
+  `segment_leaf` bỏ khỏi `leaf_mask`, nên `segment_lesions` cũng không thể
+  tách chúng; đây là phần lớn sai số S còn lại trên 30 ảnh mask chuẩn.
+- Tách vết bệnh dựa vào đổi màu: virus làm lá biến dạng mà không đổi màu (xoăn
+  vàng lá, khảm) và mốc lá vàng nhạt có màu gần mô khỏe nên khó tách; lá có
+  nhiều mô vàng úa (xoăn vàng lá) có thể bị tính dư.
+- Chấm nhện đỏ là những điểm bạc màu, sáng hơn mô khỏe mà a\* gần như không đổi,
+  giống vùng lá phản sáng: thêm điều kiện "sáng hơn mốc" thì bắt lại được nhện
+  đỏ nhưng tỉ lệ lá khỏe ra cấp 0 giảm từ khoảng 45% xuống 17–27%, nên không
+  dùng. Nhện đỏ vì vậy bị đánh giá thấp mức độ (thường ra cấp 1).
+- Lá có vết bệnh nhỏ hoặc nhạt màu (một số lá Đốm vi khuẩn, Nhện đỏ, Đốm đích)
+  có thể ra cấp 0 dù classifier nhận đúng bệnh. Khi đó trang Kết quả hiện cảnh
+  báo mâu thuẫn của việc 4G ("… nhưng không phát hiện vết bệnh nào (Cấp 0)"),
+  đây là hành vi đúng thiết kế chứ không phải lỗi.
 
 ### Xem trực quan segmentation
 

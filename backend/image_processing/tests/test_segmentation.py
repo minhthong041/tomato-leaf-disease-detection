@@ -359,6 +359,73 @@ class SegmentationTests(TestCase):
         self.assertEqual(leaf_mask[50, 50], 255)
         self.assertEqual(lesion_mask[50, 50], 0)
 
+    def test_segment_lesions_ignores_dark_shadow_band_at_leaf_edge(self):
+        # Bóng xám tối nằm trong leaf_mask, sát mép nhưng ngoài lề 5 pixel
+        image = np.full((120, 120, 3), 200, dtype=np.uint8)
+        cv2.circle(image, (60, 60), 45, (40, 160, 50), -1)
+        cv2.circle(image, (60, 60), 36, (49, 61, 73), 6)
+        leaf_mask = np.zeros((120, 120), dtype=np.uint8)
+        cv2.circle(leaf_mask, (60, 60), 45, 255, -1)
+
+        lesion_mask, _ = segmentation.segment_lesions(image, leaf_mask)
+
+        self.assertEqual(cv2.countNonZero(lesion_mask), 0)
+
+    def test_segment_lesions_keeps_dark_necrosis_inside_leaf(self):
+        # Cùng màu tối ít sắc với bóng ở test trên nhưng nằm giữa lá thì là mô hoại tử
+        image = np.full((120, 120, 3), 200, dtype=np.uint8)
+        cv2.circle(image, (60, 60), 45, (40, 160, 50), -1)
+        cv2.circle(image, (60, 60), 10, (49, 61, 73), -1)
+        leaf_mask = np.zeros((120, 120), dtype=np.uint8)
+        cv2.circle(leaf_mask, (60, 60), 45, 255, -1)
+
+        lesion_mask, _ = segmentation.segment_lesions(image, leaf_mask)
+
+        self.assertEqual(lesion_mask[60, 60], 255)
+
+    def test_segment_lesions_keeps_colorless_necrosis_deep_inside_leaf(self):
+        # Mô chết nâu đen có chroma dưới LESION_MIN_CHROMA, nằm sâu trong lá nên vẫn là vết bệnh
+        image = np.full((120, 120, 3), 200, dtype=np.uint8)
+        cv2.circle(image, (60, 60), 45, (40, 160, 50), -1)
+        cv2.circle(image, (60, 60), 10, (35, 40, 50), -1)
+        leaf_mask = np.zeros((120, 120), dtype=np.uint8)
+        cv2.circle(leaf_mask, (60, 60), 45, 255, -1)
+
+        lesion_mask, _ = segmentation.segment_lesions(image, leaf_mask)
+
+        self.assertEqual(lesion_mask[60, 60], 255)
+
+    def test_segment_lesions_uses_fallback_reference_when_leaf_lacks_green(self):
+        # Lá bệnh nặng gần như toàn nâu: trung vị cả lá sẽ là màu vết bệnh, nên phải dùng mốc dự phòng
+        image = np.full((120, 120, 3), 230, dtype=np.uint8)
+        cv2.circle(image, (60, 60), 45, (0, 80, 140), -1)
+        cv2.circle(image, (60, 25), 4, (40, 160, 50), -1)
+        leaf_mask = np.zeros((120, 120), dtype=np.uint8)
+        cv2.circle(leaf_mask, (60, 60), 45, 255, -1)
+
+        lesion_mask, intermediate = segmentation.segment_lesions(image, leaf_mask)
+
+        self.assertLess(
+            cv2.countNonZero(intermediate[steps.HEALTHY_MASK]), segmentation.HEALTHY_REF_MIN_PX,
+        )
+        self.assertEqual(lesion_mask[60, 60], 255)
+        self.assertGreater(cv2.countNonZero(lesion_mask), cv2.countNonZero(leaf_mask) // 2)
+
+    def test_segment_lesions_reference_follows_leaf_color(self):
+        # Lá xanh ngả vàng đồng đều không bị coi là bệnh; đốm nâu trên lá đó vẫn được tách
+        image = np.full((120, 120, 3), 230, dtype=np.uint8)
+        cv2.circle(image, (60, 60), 45, (30, 170, 120), -1)
+        leaf_mask = np.zeros((120, 120), dtype=np.uint8)
+        cv2.circle(leaf_mask, (60, 60), 45, 255, -1)
+
+        lesion_mask, intermediate = segmentation.segment_lesions(image, leaf_mask)
+        self.assertEqual(cv2.countNonZero(lesion_mask), 0)
+        self.assertEqual(intermediate[steps.HEALTHY_MASK][60, 60], 255)
+
+        cv2.circle(image, (60, 60), 8, (0, 80, 140), -1)
+        lesion_mask, _ = segmentation.segment_lesions(image, leaf_mask)
+        self.assertEqual(lesion_mask[60, 60], 255)
+
     def test_process_image_returns_requested_result_shape(self):
         image = synthetic_leaf()
 
