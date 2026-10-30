@@ -66,3 +66,17 @@ export function resultWarnings(diagnosis) {
   }
   return warnings;
 }
+
+// Có hiện khuyến nghị IPM theo cấp độ trên trang Kết quả không.
+// Bệnh virus, nhện đỏ, lá khỏe (replaces_severity_advice) chỉ hiện khuyến nghị theo bệnh vì khuyến nghị
+// theo cấp sai với các lớp này (3D, phần II). Vẫn hiện cả hai khi:
+// - độ tin cậy thấp: tên bệnh có thể sai, nên không bỏ khuyến nghị theo cấp;
+// - lá khỏe nhưng Cấp >= 1: có vết bệnh thật hay không chưa chắc (cảnh báo mâu thuẫn của 4G vẫn hiện).
+export function showSeverityAdvice(diagnosis) {
+  const { disease, disease_recommendation: advice, severity_level: level } = diagnosis;
+  if (!advice?.replaces_severity_advice) return true;
+  const confidence = diagnosis.disease_confidence == null ? null : Number(diagnosis.disease_confidence);
+  if (confidence != null && confidence < LOW_CONFIDENCE_THRESHOLD) return true;
+  if (disease?.is_healthy && level != null && level >= 1) return true;
+  return false;
+}

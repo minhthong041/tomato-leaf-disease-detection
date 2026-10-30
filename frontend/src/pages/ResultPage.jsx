@@ -13,7 +13,9 @@ import FeedbackDialog from '../components/FeedbackDialog';
 import ResultWarning from '../components/ResultWarning';
 import SeverityGauge from '../components/SeverityGauge';
 import StepGallery from '../components/StepGallery';
-import { STATUS_LABELS, formatPercent, resultWarnings } from '../constants/diagnosis';
+import {
+  STATUS_LABELS, formatPercent, resultWarnings, showSeverityAdvice,
+} from '../constants/diagnosis';
 
 const POLL_INTERVAL_MS = 2000;
 // Tiêu đề điền sẵn khi mở hộp "Báo kết quả sai" từ khung cảnh báo
@@ -81,8 +83,6 @@ export default function ResultPage() {
   const { disease } = diagnosis;
   const hasWarnings = resultWarnings(diagnosis).length > 0;
   const diseaseAdvice = diagnosis.disease_recommendation;
-  // Bệnh virus, nhện đỏ, lá khỏe: khuyến nghị chung theo cấp không đúng, chỉ hiện khuyến nghị theo bệnh
-  const showSeverityAdvice = !diseaseAdvice?.replaces_severity_advice;
   return (
     <Stack spacing={3}>
       <Stack direction="row" spacing={1} useFlexGap
@@ -122,7 +122,7 @@ export default function ResultPage() {
               {' '}· {diagnosis.lesion_count} đốm bệnh
             </Typography>
             <SeverityGauge level={diagnosis.severity_level} />
-            {showSeverityAdvice && (
+            {showSeverityAdvice(diagnosis) && (
               <Alert severity={diagnosis.severity_level >= 2 ? 'warning' : 'success'}>
                 <strong>Khuyến nghị IPM theo cấp độ:</strong> {diagnosis.recommendation}
               </Alert>
