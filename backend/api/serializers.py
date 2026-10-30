@@ -9,6 +9,7 @@ from rest_framework.exceptions import NotFound
 from image_processing.severity import IPM_RECOMMENDATIONS
 
 from .models import DiagnosisHistory, DiagnosisStep, Disease, ErrorReport, Feedback, User
+from .recommendations import disease_recommendation
 
 # Ảnh tải lên: chỉ nhận JPG/PNG, tối đa MAX_UPLOAD_MB
 ALLOWED_IMAGE_FORMATS = ('JPEG', 'PNG')
@@ -53,6 +54,8 @@ class DiagnosisSerializer(serializers.ModelSerializer):
     disease = DiseaseSerializer(read_only=True)
     steps = DiagnosisStepSerializer(many=True, read_only=True)
     recommendation = serializers.SerializerMethodField()
+    # Khuyến nghị theo bệnh (api/recommendations.py); recommendation ở trên là khuyến nghị theo cấp
+    disease_recommendation = serializers.SerializerMethodField()
 
     class Meta:
         model = DiagnosisHistory
@@ -60,7 +63,7 @@ class DiagnosisSerializer(serializers.ModelSerializer):
             'id', 'status', 'error_message',
             'original_image', 'processed_image',
             'disease', 'disease_confidence',
-            'severity_level', 'recommendation',
+            'severity_level', 'recommendation', 'disease_recommendation',
             'infected_ratio', 'leaf_area_px', 'lesion_area_px', 'lesion_count', 'lesions',
             'steps', 'is_bookmarked', 'created_at',
         )
@@ -70,6 +73,11 @@ class DiagnosisSerializer(serializers.ModelSerializer):
         if obj.severity_level is None:
             return None
         return IPM_RECOMMENDATIONS[obj.severity_level]
+
+    def get_disease_recommendation(self, obj):
+        if obj.disease is None:
+            return None
+        return disease_recommendation(obj.disease.code)
 
 
 class DiagnosisCreateSerializer(serializers.Serializer):
