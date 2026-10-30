@@ -133,6 +133,7 @@ thay cho file split; đường dẫn trong file split được tính tương đ�
 | `processed_image` | `draw_lesions` | `processed_image` |
 | `steps` | Ảnh trung gian, theo `steps.ORDER` | Bảng `diagnosis_steps` |
 | `recommendation` | `severity.IPM_RECOMMENDATIONS` | Không lưu, API trả kèm |
+| `disease_recommendation` | `api/recommendations.py`, tra theo `disease_code` | Không lưu, API trả kèm (trừ API danh sách) |
 
 Diện tích lá và vết bệnh là **số điểm ảnh của mask**, không phải tổng diện tích contour.
 
