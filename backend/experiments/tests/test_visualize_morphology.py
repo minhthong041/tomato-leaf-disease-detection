@@ -12,9 +12,13 @@ from experiments import evaluate, visualize_morphology
 class MorphologyFigureTests(TestCase):
     def setUp(self):
         self.tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        self.image = np.full((96, 96, 3), (0, 170, 0), dtype=np.uint8)
-        self.leaf = np.zeros((96, 96), dtype=np.uint8)
-        cv2.ellipse(self.leaf, (48, 48), (35, 30), 0, 0, 360, 255, -1)
+        self.image = np.full((96, 96, 3), 255, dtype=np.uint8)
+        cv2.ellipse(
+            self.image, (48, 48), (35, 30), 0, 0, 360, (0, 170, 0), -1,
+        )
+        self.leaf = visualize_morphology._leaf_segmentation_stages(
+            self.image,
+        )[-1]
         self.raw_lesion = np.zeros_like(self.leaf)
         cv2.circle(self.raw_lesion, (48, 48), 8, 255, -1)
         self.lesion = self.raw_lesion.copy()
@@ -42,7 +46,11 @@ class MorphologyFigureTests(TestCase):
         false_positive = self.raw_lesion.copy()
         cases = []
         for name, truth, prediction in (
-            ('correct-positive', self.raw_lesion, self.raw_lesion),
+            ('highest-iou', self.raw_lesion, self.raw_lesion),
+            (
+                'lowest-iou', self.raw_lesion,
+                cv2.circle(empty.copy(), (20, 20), 5, 255, -1),
+            ),
             ('false-positive', empty, false_positive),
             ('correct-negative', empty, empty),
         ):
@@ -58,8 +66,38 @@ class MorphologyFigureTests(TestCase):
                     item, self.image, prediction, metrics,
                 ),
             )
+
+        selected = visualize_morphology._select_examples(cases)
+        self.assertEqual(
+            [label for label, _ in selected],
+            [
+                'IoU cao nhất', 'IoU thấp nhất',
+                'Báo nhầm (mask chuẩn rỗng)', 'Đúng âm (mask chuẩn rỗng)',
+            ],
+        )
+        self.assertEqual(selected[0][1].item.path.stem, 'highest-iou')
+        self.assertEqual(selected[1][1].item.path.stem, 'lowest-iou')
+
         output = self.tmp / 'examples.png'
 
         visualize_morphology.plot_examples(cases, output)
 
         self.assert_png(output)
+
+    def test_examples_overlay_uses_evaluate_colors_and_pixel_rules(self):
+        truth = np.zeros_like(self.leaf)
+        prediction = np.zeros_like(self.leaf)
+        truth[10, 10] = 255
+        truth[10, 11] = 255
+        prediction[10, 10] = 255
+        prediction[10, 12] = 255
+
+        expected = cv2.cvtColor(
+            evaluate.color_comparison(self.image, prediction, truth),
+            cv2.COLOR_BGR2RGB,
+        )
+        actual = visualize_morphology._examples_overlay(
+            self.image, truth, prediction,
+        )
+
+        np.testing.assert_array_equal(actual, expected)

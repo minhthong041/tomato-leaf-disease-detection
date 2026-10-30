@@ -64,19 +64,28 @@ def _validate_inputs(
             raise ValueError(f'{name} chỉ được chứa giá trị 0 và 255')
 
 
-def _overlay_mask(
-    image: np.ndarray, mask: np.ndarray, color: tuple[int, int, int],
-) -> np.ndarray:
-    overlay = image.astype(np.float32)
-    selected = mask > 0
-    overlay[selected] = 0.45 * overlay[selected] + 0.55 * np.array(
-        color, dtype=np.float32,
-    )
-    return np.clip(overlay, 0, 255).astype(np.uint8)
-
-
 def _mask_rgb(mask: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB)
+
+
+def _leaf_segmentation_stages(image: np.ndarray) -> tuple[np.ndarray, ...]:
+    """Reproduce the exact mask stages used by segment_leaf for illustration."""
+    cv2.setRNGSeed(pipeline.RNG_SEED)
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    green_seed = cv2.inRange(
+        hsv,
+        np.array(segmentation.LEAF_GREEN_LOWER, dtype=np.uint8),
+        np.array(segmentation.LEAF_GREEN_UPPER, dtype=np.uint8),
+    )
+    grabcut_mask = segmentation._refine_leaf_mask(image, hsv, green_seed)
+    close_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, segmentation.LEAF_CLOSE_KSIZE,
+    )
+    closed_mask = cv2.morphologyEx(
+        grabcut_mask, cv2.MORPH_CLOSE, close_kernel,
+    )
+    filled_mask = segmentation._fill_largest_contour(closed_mask)
+    return green_seed, grabcut_mask, closed_mask, filled_mask
 
 
 def plot_morphology(
@@ -89,15 +98,18 @@ def plot_morphology(
 ) -> None:
     """Lưu các mask trước/sau morphology và contour do pipeline tạo."""
     _validate_inputs(image, leaf_mask, lesion_raw, lesion_mask)
+    leaf_seed, leaf_grabcut, leaf_closed, leaf_filled = (
+        _leaf_segmentation_stages(image)
+    )
+    if not np.array_equal(leaf_filled, leaf_mask):
+        raise ValueError('Các bước minh họa không khớp mask do segment_leaf tạo')
+
+    # Keep these operations in sync with segment_lesions when its morphology changes.
     open_kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, segmentation.LESION_OPEN_KSIZE,
     )
     close_kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, segmentation.LESION_CLOSE_KSIZE,
-    )
-    leaf_opened = cv2.morphologyEx(leaf_mask, cv2.MORPH_OPEN, open_kernel)
-    leaf_open_close = cv2.morphologyEx(
-        leaf_opened, cv2.MORPH_CLOSE, close_kernel,
     )
     lesion_opened = cv2.morphologyEx(lesion_raw, cv2.MORPH_OPEN, open_kernel)
     lesion_open_close = cv2.morphologyEx(
@@ -107,17 +119,17 @@ def plot_morphology(
 
     panels = [
         (cv2.cvtColor(image, cv2.COLOR_BGR2RGB), 'Ảnh sau tiền xử lý'),
-        (_mask_rgb(leaf_mask), 'Mask lá của pipeline'),
-        (_mask_rgb(leaf_opened), 'Mask lá + Opening*'),
-        (_mask_rgb(leaf_open_close), 'Mask lá + Open/Close*'),
-        (
-            cv2.cvtColor(_overlay_mask(image, leaf_mask, (0, 220, 0)), cv2.COLOR_BGR2RGB),
-            'Overlay mask lá',
-        ),
+        (_mask_rgb(leaf_seed), 'Seed xanh HSV'),
+        (_mask_rgb(leaf_grabcut), 'Sau GrabCut + khôi phục mép màu ấm'),
+        (_mask_rgb(leaf_closed), 'Sau Closing lá 5×5'),
+        (_mask_rgb(leaf_filled), 'Mask lá sau tô contour'),
         (_mask_rgb(lesion_raw), 'Mask bệnh thô'),
-        (_mask_rgb(lesion_opened), 'Sau Opening'),
-        (_mask_rgb(lesion_open_close), 'Sau Closing'),
-        (_mask_rgb(lesion_mask), 'Mask bệnh cuối'),
+        (_mask_rgb(lesion_opened), 'Sau Opening 5×5'),
+        (_mask_rgb(lesion_open_close), 'Sau Closing 5×5'),
+        (
+            _mask_rgb(lesion_mask),
+            'Sau giao leaf_core + lọc thành phần ≥40 px',
+        ),
         (
             cv2.cvtColor(contour_image, cv2.COLOR_BGR2RGB),
             'Contour bệnh cuối',
@@ -131,7 +143,7 @@ def plot_morphology(
         ax.axis('off')
     figure.suptitle(
         f'{title or "Giai đoạn morphology"}\n'
-        '* Opening/Closing trên mask lá chỉ minh họa, không thay đổi segment_leaf.',
+        'Mask lá theo đúng seed → GrabCut → Closing → tô contour của segment_leaf.',
         fontsize=12,
     )
     output_path = Path(output_path)
@@ -143,17 +155,13 @@ def plot_morphology(
 def _examples_overlay(
     image: np.ndarray, truth: np.ndarray, prediction: np.ndarray,
 ) -> np.ndarray:
-    overlay = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    truth_pixels = truth > 0
-    prediction_pixels = prediction > 0
-    overlay[truth_pixels & ~prediction_pixels] = (0, 220, 0)
-    overlay[prediction_pixels & ~truth_pixels] = (255, 40, 40)
-    overlay[truth_pixels & prediction_pixels] = (255, 220, 0)
-    return overlay
+    comparison = evaluate.color_comparison(image, prediction, truth)
+    return cv2.cvtColor(comparison, cv2.COLOR_BGR2RGB)
 
 
-def plot_examples(examples: list[Example], output_path: Path) -> None:
-    """Lưu ví dụ IoU tốt/xấu, báo nhầm và đúng âm theo mask chuẩn."""
+def _select_examples(
+    examples: list[Example],
+) -> list[tuple[str, Example]]:
     positive = [
         example for example in examples
         if cv2.countNonZero(example.item.lesion_mask) > 0
@@ -186,6 +194,12 @@ def plot_examples(examples: list[Example], output_path: Path) -> None:
         selected.append(('Đúng âm (mask chuẩn rỗng)', true_negatives[0]))
     if not selected:
         raise ValueError('Không có ví dụ để vẽ từ danh sách mask chuẩn')
+    return selected
+
+
+def plot_examples(examples: list[Example], output_path: Path) -> None:
+    """Lưu ví dụ IoU tốt/xấu, báo nhầm và đúng âm theo mask chuẩn."""
+    selected = _select_examples(examples)
 
     figure, axes = plt.subplots(
         len(selected), 4, figsize=(15, 3.8 * len(selected)),
@@ -214,7 +228,7 @@ def plot_examples(examples: list[Example], output_path: Path) -> None:
                 ax.set_title(columns[column])
             ax.axis('off')
     figure.suptitle(
-        'Ví dụ đúng và sai (xanh: chỉ chuẩn, đỏ: chỉ dự đoán, vàng: trùng)',
+        'So sánh mask (xanh lá: đúng, đỏ: báo nhầm, xanh dương: bỏ sót)',
         fontsize=14,
     )
     output_path = Path(output_path)
@@ -224,6 +238,8 @@ def plot_examples(examples: list[Example], output_path: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(
         description='Vẽ morphology và ví dụ dự đoán đúng/sai so với mask chuẩn.',
     )
@@ -249,6 +265,7 @@ def main(argv: list[str] | None = None) -> int:
     for index, item in enumerate(items, start=1):
         image = pipeline.load_image(item.path)
         processed, _ = preprocessing.preprocess(image)
+        cv2.setRNGSeed(pipeline.RNG_SEED)
         leaf_mask, _ = segmentation.segment_leaf(processed)
         lesion_mask, intermediates = segmentation.segment_lesions(
             processed, leaf_mask,

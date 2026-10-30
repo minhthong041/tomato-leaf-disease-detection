@@ -11,10 +11,16 @@ mức độ nghiêm trọng. Hai mask cùng kích thước ảnh đã tiền x�
 
 `segment_leaf(image)` nhận ảnh BGR `uint8` sau resize, khử nhiễu và CLAHE.
 Ảnh được đổi sang HSV; pixel xanh bão hòa (H 25–95, S 40–255, V 30–255) làm
-foreground seed. GrabCut khôi phục phần mô tối, nếp gập và cuống gần seed,
-đồng thời dùng màu nền cục bộ để hạn chế bóng ngoài lá. Mask được closing
-elip 5×5 một lần, sau đó tô contour lớn nhất và các contour có diện tích từ
-3% contour lớn nhất trở lên.
+seed foreground. Khoảng cách tới seed xác định vùng GrabCut được phép xem là
+foreground/background có khả năng; pixel ở viền ảnh, vùng trung tính và Hue
+màu ấm được hạn chế để giảm nhận nhầm nền. GrabCut chạy 5 vòng, khôi phục
+mô tối và cuống gần seed. Sau GrabCut, pixel mô màu ấm gần seed (Hue 15–24
+hoặc 165–179, S ≥ 50, V ≥ 40, cách seed không quá 20 px) được khôi phục để
+giữ mép hoại tử.
+
+Mask sau đó được closing bằng kernel ellipse 5×5 một lần. Cuối cùng, tô contour
+lớn nhất và các contour có diện tích ít nhất 3% contour lớn nhất. Kết quả là
+`leaf_mask` nhị phân, có cả vùng bệnh bên trong phiến lá.
 
 `segment_leaf` được giữ nguyên trong phần tinh chỉnh này để không làm thay đổi
 đầu vào/đầu ra của các giai đoạn sau. Hợp đồng đầy đủ nằm tại
@@ -22,19 +28,30 @@ elip 5×5 một lần, sau đó tô contour lớn nhất và các contour có di
 
 ## Giai đoạn 3 — Tách và đo vết bệnh
 
-1. Tạo `healthy_mask` từ mô trong `leaf_mask` thuộc H 35–85, S ≥ 25, V ≥ 50.
-2. Tạo vùng lõi bằng erosion elip với bán kính 3 px. Giới hạn này giảm từ 5 px
-   để giảm mất mô bệnh sát mép nhưng vẫn hạn chế bóng biên.
-3. Ứng viên vết bệnh là pixel không thuộc mô khỏe, có S ≥ 35 và V ≥ 50.
-4. Dùng opening elip 3×3 để loại nhiễu nhỏ, closing elip 7×7 để nối vùng bệnh
-   đứt đoạn; loại thành phần liên thông nhỏ hơn 12 pixel.
-5. Giao kết quả với vùng lõi. Do hợp đồng yêu cầu vết bệnh nằm trong lá, pixel
-   bị `segment_leaf` loại khỏi `leaf_mask` không thể được khôi phục ở giai đoạn
-   3.
+`segment_lesions(image, leaf_mask)` so màu từng pixel với mô xanh khỏe của
+chính chiếc lá, thay vì dùng một ngưỡng Hue/Saturation chung cho mọi ảnh:
 
-Các ngưỡng và kernel là hằng số trong
-[segmentation.py](../backend/image_processing/segmentation.py). Không có
-tham số runtime mới.
+1. Tạo vùng tham chiếu mô khỏe trong `leaf_mask` với Hue 40–85, S ≥ 40 và
+   V ≥ 40. Nếu có ít nhất 100 pixel tham chiếu, lấy trung vị LAB của vùng này;
+   nếu không đủ, dùng mốc LAB dự phòng `(124, -14, 16)` (a*, b* theo thang đã
+   trừ 128 của OpenCV).
+2. Tạo ứng viên đổi màu nếu a* tăng ít nhất 12 so với mốc xanh; hoặc a* tăng
+   ít nhất 3 đồng thời b* tăng ít nhất 8 (vàng đậm); hoặc pixel không thuộc
+   Hue xanh 35–85, a* không giảm và L* tối hơn mốc ít nhất 20 (mô hoại tử tối).
+   Ứng viên cần V ≥ 30 và chroma ít nhất 8, ngoại trừ mô chết tối nằm sâu
+   trong lá.
+3. Loại bóng đổ ít màu và tối (chroma < 10, V < 90) trong dải 15 px sát mép.
+   Ngoại lệ mô chết tối chỉ được giữ ở lõi lá: cách biên hơn 25 px, tối hơn
+   mốc ít nhất 20 đơn vị L* và a* tăng ít nhất 5.
+4. Erode `leaf_mask` bằng kernel ellipse 11×11 để tạo `leaf_core`, tức loại
+   vùng cách biên lá tối đa 5 px. Chỉ giữ các ứng viên bên trong vùng lõi.
+5. Opening ellipse 5×5 loại nhiễu nhỏ; Closing ellipse 5×5 nối vùng đốm gần
+   nhau. Giao mask sau Closing với `leaf_core`, rồi bỏ thành phần liên thông
+   nhỏ hơn 40 pixel. Kết quả cuối luôn là tập con của `leaf_mask`.
+
+Các ngưỡng, luật bóng đổ và kernel là hằng số trong
+[segmentation.py](../backend/image_processing/segmentation.py); không có tham
+số runtime mới.
 
 `measure_lesions()` lấy thành phần liên thông làm từng đốm, trả diện tích pixel,
 chu vi contour, circularity, tâm và bounding box. `draw_lesions()` vẽ contour
@@ -54,41 +71,40 @@ cùng ngưỡng cấp với pipeline. Nếu không có pixel lá, pipeline báo 
 nếu mask chuẩn vết bệnh rỗng, `evaluate.py` không tính IoU/Dice cho ảnh đó và
 ghi nhận báo nhầm khi `A_lesion > 0`.
 
-## Đánh giá tham số
+## Đánh giá trên 30 mask chuẩn
 
-Đã chạy `python experiments/evaluate.py` trên 30 ảnh mask chuẩn và rà thêm 3
-ảnh train có sẵn cho mỗi lớp (30 ảnh train tổng cộng, không trùng tập chuẩn).
-Ảnh train không có mask vết bệnh chuẩn nên chỉ dùng để rà sanity-check, không
-được dùng tính IoU/Dice. Trong 3 ảnh train lấy mẫu mỗi lớp, mask vết bệnh vẫn
-không rỗng ở cả 3 ảnh khỏe và cả 3 ảnh xoăn vàng lá; hiện tượng này cũng có ở
-baseline, nên bước rà train không chứng minh đã hết báo nhầm ở hai lớp đó.
+Số liệu main dưới đây lấy từ lần chạy `python experiments/evaluate.py` do nhóm
+cung cấp trên commit main `62cbe6b54e37debe01e21f7bedd102a3b9288d5e`, cùng 30
+ảnh mask chuẩn của việc 1D. Cột “Trước 2C” giữ số liệu baseline đã ghi nhận
+trước khi chốt thuật toán LAB; cột main phản ánh mã segmentation hiện tại.
 
-| Chỉ số `evaluate.py` | Trước | Sau |
+| Chỉ số `evaluate.py` | Trước 2C | Main `62cbe6b` |
 |---|---:|---:|
 | Số ảnh chuẩn | 30 | 30 |
 | IoU lá | 0.892 | 0.892 |
-| IoU vết bệnh | 0.191 | 0.206 |
-| Dice vết bệnh | 0.286 | 0.304 |
-| Sai số S tuyệt đối trung bình (điểm %) | 7.49 | 7.13 |
-| Đúng cấp | 53.3% | 53.3% |
-| Lệch tối đa 1 cấp | 83.3% | 90.0% |
-| Báo nhầm trên ảnh có mask bệnh rỗng | 8/9 | 7/9 |
+| IoU vết bệnh | 0.191 | 0.216 |
+| Dice vết bệnh | 0.286 | 0.320 |
+| Sai số S tuyệt đối trung bình (điểm %) | 7.49 | 6.54 |
+| Đúng cấp | 53.3% | 50.0% |
+| Báo nhầm trên ảnh có mask bệnh rỗng | 8/9 | 6/9 |
 
-| Lớp | IoU vết bệnh trước → sau | Sai số S trước → sau (điểm %) | Báo nhầm trước → sau |
+| Lớp | IoU vết bệnh trước 2C → main | Sai số S trước 2C → main (điểm %) | Báo nhầm trước 2C → main |
 |---|---:|---:|---:|
-| Early blight | 0.198 → 0.145 | 25.88 → 25.28 | — |
-| Target Spot | 0.127 → 0.232 | 1.64 → 0.58 | — |
-| Lá khỏe | — | — | 3/3 → 3/3 |
-| Xoăn vàng lá | — | — | 3/3 → 3/3 |
-| Virus khảm | — | — | 2/3 → 1/3 |
+| Early blight | 0.198 → 0.146 | 25.88 → 28.55 | — |
+| Target Spot | 0.127 → 0.198 | 1.64 → 0.80 | — |
+| Lá khỏe | — | — | 3/3 → 2/3 |
 
-Kết quả tổng thể được cải thiện, và Target Spot có IoU cao hơn sau khi tăng
-ngưỡng Value và chỉnh kernel. Tuy vậy, báo nhầm trên lá khỏe và xoăn vàng lá
-vẫn còn 6/6. Early blight cũng còn IoU thấp; một ảnh trong tập chuẩn có
-24.376/31.944 pixel mask bệnh nằm ngoài `leaf_mask` dự đoán. Giai đoạn 3 không
-thể khôi phục các pixel này mà không vi phạm hợp đồng mask con hoặc thay đổi
-`segment_leaf`. Vì thế các số liệu này cần được xem là tiến triển một phần,
-không phải đã đạt mọi tiêu chí chấp nhận.
+IoU/Dice vết bệnh và sai số S trung bình toàn bộ được cải thiện; tỷ lệ đúng
+cấp giảm từ 53.3% xuống 50.0%. Kết quả theo lớp không đồng nhất: Early blight
+có IoU giảm và sai số S tăng, trong khi Target Spot cải thiện cả IoU và sai số
+S. Một ảnh Early blight (`RS_Erly.B 7617`) có 24.376/31.944 pixel mask bệnh
+nằm ngoài `leaf_mask` dự đoán. Giai đoạn 3 không thể khôi phục các pixel này
+mà không vi phạm hợp đồng mask con hoặc thay đổi `segment_leaf`.
+
+> **Tái lập:** mã `evaluate.py` và `segmentation.py` trong nhánh này khớp với
+> commit main `62cbe6b54e37debe01e21f7bedd102a3b9288d5e`. Ảnh PlantVillage gốc
+> không có trong checkout hiện tại, nên cần bộ ảnh chia sẻ của nhóm để chạy lại
+> độc lập `evaluate.py`.
 
 ## Hình minh họa
 
@@ -99,7 +115,8 @@ python experiments/visualize_morphology.py --out experiments\output\morphology
 ```
 
 Script dùng backend Matplotlib `Agg`; lưu panel ảnh gốc, mask lá, mask bệnh
-trước/sau Opening và Closing, mask cuối và contour vào `experiments/output/`.
-Các phép Opening/Closing minh họa trên mask lá chỉ để so sánh hình thái, không
-được gọi trong `segment_leaf`. Hình `examples_correct_vs_wrong.png` chọn ví dụ
-IoU cao/thấp, báo nhầm và đúng âm theo mask chuẩn.
+qua seed xanh, GrabCut, Closing, tô contour, mask bệnh trước/sau Opening và
+Closing, mask cuối sau giao `leaf_core`/lọc thành phần và contour vào
+`experiments/output/`. Hình `examples_correct_vs_wrong.png` chọn bốn trường
+hợp: IoU cao, IoU thấp, báo nhầm và đúng âm. Màu so sánh thống nhất với
+`evaluate.py`: xanh lá là đúng, đỏ là báo nhầm, xanh dương là bỏ sót.
