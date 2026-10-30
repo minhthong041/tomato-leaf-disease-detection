@@ -36,6 +36,7 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Giai đoạn 4: trích đặc trưng GLCM + Color Moments | Xong |
 | Giai đoạn 4: huấn luyện SVM / Random Forest | SVM xong (#18), đã huấn luyện lại trên `segment_leaf` thật (3C): accuracy 0,850, macro F1 0,809; Random Forest làm ở 3E |
 | Cấp độ 0–4 và khuyến nghị IPM | Xong |
+| Khuyến nghị theo từng bệnh | Xong — nội dung 3D trong `backend/api/recommendations.py` (khóa theo `diseases.code`), API trả `disease_recommendation`; trang kết quả hiện cả khuyến nghị theo cấp và theo bệnh (bệnh virus, nhện đỏ, lá khỏe chỉ hiện theo bệnh) |
 | Danh sách lớp bệnh (bảng `diseases`) | Xong — đủ 10 lớp lá cà chua của PlantVillage, nạp bằng migration |
 | API tải ảnh, lịch sử, kết quả, đánh dấu | Xong — chạy pipeline ngay trong request, trả `done` hoặc `failed` (ảnh không chẩn đoán được hoặc lỗi hệ thống); lọc đã lưu bằng `?is_bookmarked=true` |
 | Phản hồi kết quả sai, báo lỗi | Xong — `POST /api/feedbacks/`, `POST /api/error-reports/`; nút "Báo kết quả sai" trên trang kết quả, trang `/error-report`; quản trị viên xử lý trong `/admin/` |
