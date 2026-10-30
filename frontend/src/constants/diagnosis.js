@@ -33,8 +33,9 @@ export function formatPercent(ratio, digits = 2) {
 }
 
 // Dưới ngưỡng này trang Kết quả cảnh báo "độ tin cậy thấp".
-// Tạm đặt 0,6; cập nhật theo đề xuất ngưỡng của việc 3E (đánh giá mô hình).
-export const LOW_CONFIDENCE_THRESHOLD = 0.6;
+// Theo đề xuất của việc 3E: ngưỡng nhỏ nhất bắt được ít nhất 50% dự đoán sai (tính trên tập train);
+// trên tập test cảnh báo 12,2% ảnh, bắt 55,7% dự đoán sai. Trùng backend/experiments/pick_demo_images.py.
+export const LOW_CONFIDENCE_THRESHOLD = 0.55;
 
 // Bệnh do virus: lá xoăn, vàng hoặc khảm màu chứ không có đốm riêng, nên Cấp 0 (không tách được vết bệnh)
 // là kết quả bình thường. Bộ mask chuẩn 1D: 6/6 ảnh của hai lớp này có mask vết bệnh rỗng.
