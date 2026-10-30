@@ -33,3 +33,10 @@ export async function logout() {
   // Đưa refresh token vào blacklist; lỗi mạng ở đây không cản việc đăng xuất
   await request('/auth/logout/', { method: 'POST', body: { refresh }, auth: false }).catch(() => {});
 }
+
+// Xóa tài khoản của chính mình (backend ẩn danh hóa, thu hồi mọi refresh token).
+// Sai mật khẩu: ApiError 400 với lỗi ở trường password.
+export async function deleteAccount(password) {
+  await request('/auth/delete-account/', { method: 'POST', body: { password } });
+  tokens.clear();
+}
