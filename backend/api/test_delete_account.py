@@ -100,6 +100,27 @@ class DeleteAccountTests(APITestCase):
         self.assertFalse(BlacklistedToken.objects.exists())
         self.assertEqual(self.client.get('/api/diagnoses/').status_code, status.HTTP_200_OK)
 
+    def test_staff_cannot_delete_self(self):
+        for flags in ({'is_staff': True}, {'is_superuser': True}):
+            with self.subTest(**flags):
+                User.objects.filter(pk=self.user.pk).update(**{'is_staff': False, 'is_superuser': False, **flags})
+                response = self.delete_account()
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertEqual(response.data['non_field_errors'], [serializers.STAFF_SELF_DELETE_MESSAGE])
+
+                self.user.refresh_from_db()
+                self.assertEqual(self.user.email, EMAIL)
+                self.assertTrue(self.user.is_active)
+                self.assertFalse(BlacklistedToken.objects.exists())
+
+    def test_staff_rejected_before_password_check(self):
+        # Admin nhập sai mật khẩu vẫn nhận thông báo "xóa trong /admin/", không phải "sai mật khẩu"
+        User.objects.filter(pk=self.user.pk).update(is_staff=True)
+        response = self.delete_account(password='sai-mat-khau')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('non_field_errors', response.data)
+        self.assertNotIn('password', response.data)
+
     def test_password_not_trimmed(self):
         response = self.delete_account(password=f' {PASSWORD} ')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

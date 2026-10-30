@@ -147,7 +147,7 @@ npm install                       # trong frontend/, khi package.json thay đổ
 | POST | `/api/auth/login/` | `{"email", "password"}` | `{"access", "refresh"}` |
 | POST | `/api/auth/refresh/` | `{"refresh"}` | Cặp token mới (refresh cũ bị vô hiệu) |
 | POST | `/api/auth/logout/` | `{"refresh"}` | Vô hiệu refresh token |
-| POST | `/api/auth/delete-account/` | `{"password"}` | 204; xóa tài khoản của chính mình (ẩn danh hóa, thu hồi mọi refresh token). Sai mật khẩu trả 400 |
+| POST | `/api/auth/delete-account/` | `{"password"}` | 204; xóa tài khoản của chính mình (ẩn danh hóa, thu hồi mọi refresh token). Sai mật khẩu, hoặc tài khoản quản trị (phải xóa trong `/admin/`), trả 400 |
 | POST | `/api/diagnoses/` | multipart, trường `image` (JPG/PNG, tối đa 10 MB) | Kết quả chẩn đoán, trạng thái `done` hoặc `failed` |
 | GET | `/api/diagnoses/` | | Lịch sử của người đang đăng nhập, mới nhất trước, 20 mục/trang |
 | GET | `/api/diagnoses/:id/` | | Chi tiết một lần chẩn đoán (ảnh từng bước, khuyến nghị IPM) |

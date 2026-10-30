@@ -56,6 +56,7 @@ class DeleteAccountView(generics.GenericAPIView):
     Không xóa cứng: gọi user.anonymize() để bỏ thông tin cá nhân nhưng giữ lịch sử chẩn đoán,
     rồi thu hồi mọi refresh token. Access token đang dùng hết hiệu lực ngay vì tài khoản đã bị khóa.
     Sai mật khẩu trả 400 (không phải 401, để frontend không tưởng là phiên đăng nhập hết hạn).
+    Tài khoản quản trị trả 400: tự xóa sẽ mất quyền vào /admin/, nên phải xóa trong /admin/.
     """
 
     serializer_class = DeleteAccountSerializer
