@@ -129,7 +129,12 @@ class PredictMasksTests(TestCase):
             calls.append('segment_leaf')
             return EMPTY, {}
 
-        with mock.patch.object(evaluate.cv2, 'setRNGSeed', side_effect=lambda seed: calls.append(('seed', seed))),                 mock.patch.object(evaluate.preprocessing, 'preprocess', return_value=(processed, {})),                 mock.patch.object(evaluate.segmentation, 'segment_leaf', side_effect=segment_leaf),                 mock.patch.object(evaluate.segmentation, 'segment_lesions', return_value=(EMPTY, {})):
+        with (
+            mock.patch.object(evaluate.cv2, 'setRNGSeed', side_effect=lambda seed: calls.append(('seed', seed))),
+            mock.patch.object(evaluate.preprocessing, 'preprocess', return_value=(processed, {})),
+            mock.patch.object(evaluate.segmentation, 'segment_leaf', side_effect=segment_leaf),
+            mock.patch.object(evaluate.segmentation, 'segment_lesions', return_value=(EMPTY, {})),
+        ):
             evaluate.predict_masks(processed)
         self.assertEqual(calls, [('seed', evaluate.pipeline.RNG_SEED), 'segment_leaf'])
 
