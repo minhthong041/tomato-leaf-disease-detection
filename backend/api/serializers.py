@@ -20,6 +20,14 @@ FULLNAME_MAX_LENGTH = 255  # trùng users.fullname
 EMAIL_TAKEN_MESSAGE = 'Email này đã được dùng để đăng ký.'
 TERMS_REQUIRED_MESSAGE = 'Bạn cần đồng ý điều khoản sử dụng để đăng ký.'
 
+# Xóa tài khoản
+WRONG_PASSWORD_MESSAGE = 'Mật khẩu không đúng.'
+# Admin tự xóa sẽ mất quyền vào /admin/ (có thể không còn ai quản trị): chỉ xóa trong /admin/
+STAFF_SELF_DELETE_MESSAGE = (
+    'Tài khoản quản trị không tự xóa ở đây được. '
+    'Hãy nhờ một quản trị viên khác xóa trong trang quản trị /admin/.'
+)
+
 # Phản hồi kết quả sai, báo lỗi
 REPORT_DESCRIPTION_MAX_LENGTH = 5000  # đủ cho một mô tả, chặn gửi văn bản quá dài
 HISTORY_NOT_FOUND_MESSAGE = 'Không tìm thấy lần chẩn đoán này.'
@@ -123,6 +131,23 @@ class RegisterSerializer(serializers.Serializer):
         except IntegrityError:
             # Hai yêu cầu đăng ký cùng email gần như đồng thời: ràng buộc unique của database chặn lại
             raise serializers.ValidationError({'email': [EMAIL_TAKEN_MESSAGE]})
+
+
+class DeleteAccountSerializer(serializers.Serializer):
+    """Xác nhận xóa tài khoản: nhập lại mật khẩu của tài khoản đang đăng nhập.
+
+    Tài khoản quản trị (is_staff/is_superuser) bị từ chối trước khi kiểm tra mật khẩu.
+    """
+
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate(self, attrs):
+        user = self.context['request'].user
+        if user.is_staff or user.is_superuser:
+            raise serializers.ValidationError(STAFF_SELF_DELETE_MESSAGE)
+        if not user.check_password(attrs['password']):
+            raise serializers.ValidationError({'password': [WRONG_PASSWORD_MESSAGE]})
+        return attrs
 
 
 class OwnDiagnosisField(serializers.PrimaryKeyRelatedField):

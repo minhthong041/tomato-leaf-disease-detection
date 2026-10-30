@@ -8,7 +8,7 @@ import { errorMessage } from '../api/client';
 import { useAuth } from '../auth/context';
 
 export default function LoginPage() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, notice, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState('');
@@ -41,6 +41,7 @@ export default function LoginPage() {
             Đăng nhập
           </Typography>
           <Stack component="form" spacing={2} onSubmit={handleSubmit} noValidate>
+            {notice && !error && <Alert severity="success">{notice}</Alert>}
             {error && <Alert severity="error">{error}</Alert>}
             <TextField label="Email" type="email" autoComplete="email" required autoFocus
               value={email} onChange={(e) => setEmail(e.target.value)} />

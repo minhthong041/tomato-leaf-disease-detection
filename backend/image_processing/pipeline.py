@@ -14,6 +14,9 @@ import numpy as np
 from . import classifier, preprocessing, segmentation, severity, steps
 from .errors import PipelineError
 
+# GrabCut khởi tạo ngẫu nhiên: cố định seed để cùng một ảnh luôn ra cùng một mask, giống lúc huấn luyện
+RNG_SEED = 0
+
 
 @dataclass
 class PipelineResult:
@@ -52,6 +55,8 @@ def _check_mask(mask, image, name):
 
 def run(image: np.ndarray) -> PipelineResult:
     """Chẩn đoán một ảnh lá BGR. Ném PipelineError khi ảnh không chẩn đoán được."""
+    # RNG của OpenCV riêng cho từng luồng nên đặt ở đây vẫn đúng khi nhiều request chạy cùng lúc
+    cv2.setRNGSeed(RNG_SEED)
     processed, pre_steps = preprocessing.preprocess(image)
 
     leaf_mask, leaf_steps = segmentation.segment_leaf(processed)

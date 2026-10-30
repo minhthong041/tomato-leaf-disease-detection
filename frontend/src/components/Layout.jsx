@@ -2,6 +2,7 @@ import BugReportIcon from '@mui/icons-material/BugReport';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import HistoryIcon from '@mui/icons-material/History';
 import LogoutIcon from '@mui/icons-material/Logout';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import SpaIcon from '@mui/icons-material/Spa';
 import { AppBar, Box, Button, Container, Toolbar, Typography } from '@mui/material';
 import { Link, Outlet, useNavigate } from 'react-router';
@@ -36,6 +37,9 @@ export default function Layout() {
               </Button>
               <Button color="inherit" component={Link} to="/error-report" startIcon={<BugReportIcon />}>
                 Báo lỗi
+              </Button>
+              <Button color="inherit" component={Link} to="/account" startIcon={<ManageAccountsIcon />}>
+                Tài khoản
               </Button>
               <Button color="inherit" onClick={handleLogout} startIcon={<LogoutIcon />}>
                 Đăng xuất

@@ -9,16 +9,20 @@ import { errorMessage } from '../api/client';
 import { getDiagnosis } from '../api/diagnoses';
 import BookmarkButton from '../components/BookmarkButton';
 import FeedbackDialog from '../components/FeedbackDialog';
+import ResultWarning from '../components/ResultWarning';
 import SeverityGauge from '../components/SeverityGauge';
 import StepGallery from '../components/StepGallery';
-import { STATUS_LABELS, formatPercent } from '../constants/diagnosis';
+import { STATUS_LABELS, formatPercent, resultWarnings } from '../constants/diagnosis';
 
 const POLL_INTERVAL_MS = 2000;
+// Tiêu đề điền sẵn khi mở hộp "Báo kết quả sai" từ khung cảnh báo
+const WARNING_FEEDBACK_TITLE = 'Kết quả có cảnh báo, nghi bị sai';
 
 export default function ResultPage() {
   const { id } = useParams();
   const [diagnosis, setDiagnosis] = useState(null);
   const [error, setError] = useState('');
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   // Pipeline chạy sau khi tải ảnh: hỏi lại định kỳ tới khi done/failed
   useEffect(() => {
@@ -74,6 +78,7 @@ export default function ResultPage() {
   }
 
   const { disease } = diagnosis;
+  const hasWarnings = resultWarnings(diagnosis).length > 0;
   return (
     <Stack spacing={3}>
       <Stack direction="row" spacing={1} useFlexGap
@@ -81,7 +86,8 @@ export default function ResultPage() {
         {backButton}
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
           <BookmarkButton diagnosis={diagnosis} onChange={setDiagnosis} />
-          <FeedbackDialog historyId={diagnosis.id} />
+          <FeedbackDialog historyId={diagnosis.id} open={feedbackOpen} onOpenChange={setFeedbackOpen}
+            suggestedTitle={hasWarnings ? WARNING_FEEDBACK_TITLE : ''} />
         </Stack>
       </Stack>
 
@@ -95,6 +101,8 @@ export default function ResultPage() {
           <CardContent><Typography variant="subtitle2">Vết bệnh đã khoanh vùng</Typography></CardContent>
         </Card>
       </Box>
+
+      <ResultWarning diagnosis={diagnosis} onReport={() => setFeedbackOpen(true)} />
 
       <Card>
         <CardContent>

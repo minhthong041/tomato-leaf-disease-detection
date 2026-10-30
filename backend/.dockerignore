@@ -1,0 +1,12 @@
+# Không đưa vào image backend
+venv/
+.venv/
+.env
+__pycache__/
+*.pyc
+# Ảnh PlantVillage, mask, ảnh tự chụp: chỉ dùng để huấn luyện / đánh giá
+dataset/
+# Ảnh người dùng tải lên: nằm trong volume media của docker compose
+media/
+staticfiles/
+experiments/output/
