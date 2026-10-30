@@ -23,14 +23,33 @@ LEAF_GRABCUT_ITERATIONS = 5
 LEAF_WARM_EDGE_RESTORE_RADIUS = 20
 LEAF_WARM_MIN_SATURATION = 50
 LEAF_WARM_MIN_VALUE = 40
-LESION_OPEN_KSIZE = (3, 3)
+# Tách vết bệnh (đợt 3, việc 2C): so màu từng điểm với mô xanh khỏe của chính lá đó trong không gian LAB,
+# chọn trên 30 ảnh mask chuẩn (dataset/splits/ground_truth.txt) và kiểm tra lại trên ảnh tập train.
+# LAB 8 bit của OpenCV: L* nhân 255/100, a* và b* cộng 128; các ngưỡng dưới tính theo thang 8 bit này.
+LESION_OPEN_KSIZE = (5, 5)
 LESION_CLOSE_KSIZE = (5, 5)
 LESION_EDGE_MARGIN_PX = 5
+LESION_MIN_AREA_PX = 40
+# Mô xanh tham chiếu: điểm xanh bão hòa trong lá; cần ít nhất HEALTHY_REF_MIN_PX điểm, nếu không thì lấy cả lá
+HEALTHY_REF_HUE_RANGE = (40, 85)
+HEALTHY_REF_MIN_SATURATION = 40
+HEALTHY_REF_MIN_VALUE = 40
+HEALTHY_REF_MIN_PX = 100
+# Vết bệnh nâu/đỏ: a* lệch về phía đỏ so với mô xanh tham chiếu
+LESION_MIN_DELTA_A = 12
+# Vết vàng đậm: a* lệch ít nhưng b* lệch nhiều về phía vàng
+LESION_YELLOW_MIN_DELTA_A = 3
+LESION_YELLOW_MIN_DELTA_B = 8
+# Mô hoại tử tối (mốc sương): Hue ngoài dải xanh, tối hơn mô xanh tham chiếu và không xanh hơn nó
 HEALTHY_HUE_RANGE = (35, 85)
-HEALTHY_MIN_SATURATION = 25
-HEALTHY_MIN_VALUE = 30
-LESION_MIN_SATURATION = 25
-LESION_MIN_AREA_PX = 12
+LESION_DARK_MIN_DELTA_L = 20
+LESION_MIN_VALUE = 30
+# Điểm gần như không màu (bóng xám, vệt lóa) không phải vết bệnh; bóng đổ tối được loại với ngưỡng rộng hơn
+LESION_MIN_CHROMA = 8
+SHADOW_MAX_CHROMA = 10
+SHADOW_MAX_VALUE = 90
+# Bóng đổ chỉ nằm ở dải sát mép lá; mô hoại tử tối, ít màu ở giữa lá vẫn được giữ
+SHADOW_MAX_EDGE_DIST_PX = 15
 
 
 def _validate_image(image: np.ndarray, name: str = 'image') -> None:
@@ -153,40 +172,62 @@ def segment_leaf(image: np.ndarray) -> tuple[np.ndarray, dict[str, np.ndarray]]:
 def segment_lesions(
     image: np.ndarray, leaf_mask: np.ndarray,
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-    """Tách đốm trong lá, giới hạn màu khỏe và loại vùng nhiễu nhỏ.
+    """Tách vết bệnh bằng độ lệch màu LAB so với mô xanh khỏe của chính lá đó.
 
-    Bỏ qua vùng cách biên ``leaf_mask`` tối đa 5 pixel để hạn chế bóng đổ
-    sát mép lá bị nhận nhầm thành đốm bệnh.
-    ``lesion_mask`` được giao với ``leaf_mask`` lần cuối để bảo đảm mọi pixel
-    đốm đều thuộc diện tích lá.
+    Mỗi ảnh lấy trung vị L*, a*, b* của các điểm xanh bão hòa trong lá làm mốc mô khỏe (ảnh
+    ``HEALTHY_MASK``), nên ngưỡng không phụ thuộc độ sáng và cân bằng trắng của ảnh. Một điểm là vết bệnh
+    khi a* lệch về phía đỏ/nâu, hoặc lệch vàng đậm (a* và b* cùng tăng), hoặc là mô hoại tử tối có Hue
+    ngoài dải xanh. Bị loại: điểm gần như không màu, bóng đổ tối ít màu trong dải 15 pixel sát mép lá, và
+    mọi điểm cách biên ``leaf_mask`` tối đa 5 pixel (bóng đổ sát mép hay lọt vào mask lá). Opening,
+    closing và ngưỡng diện tích tối thiểu loại nhiễu nhỏ. ``lesion_mask`` được giao với ``leaf_mask`` để
+    mọi pixel đốm đều thuộc diện tích lá.
     """
     _validate_image(image)
     _validate_mask(leaf_mask, image.shape[:2], 'leaf_mask')
 
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     hue, saturation, value = cv2.split(hsv)
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+    lightness, a_star, b_star = lab[:, :, 0], lab[:, :, 1] - 128, lab[:, :, 2] - 128
     roi = cv2.bitwise_and(image, image, mask=leaf_mask)
-    healthy_pixels = (
-        (hue >= HEALTHY_HUE_RANGE[0])
-        & (hue <= HEALTHY_HUE_RANGE[1])
-        & (saturation >= HEALTHY_MIN_SATURATION)
-        & (value >= HEALTHY_MIN_VALUE)
+    in_leaf = leaf_mask > 0
+
+    reference = (
+        in_leaf
+        & (hue >= HEALTHY_REF_HUE_RANGE[0])
+        & (hue <= HEALTHY_REF_HUE_RANGE[1])
+        & (saturation >= HEALTHY_REF_MIN_SATURATION)
+        & (value >= HEALTHY_REF_MIN_VALUE)
     )
-    healthy_mask = np.where(healthy_pixels, 255, 0).astype(np.uint8)
-    healthy_mask = cv2.bitwise_and(healthy_mask, leaf_mask)
+    healthy_mask = np.where(reference, 255, 0).astype(np.uint8)
+    if np.count_nonzero(reference) < HEALTHY_REF_MIN_PX:
+        reference = in_leaf
+
+    if reference.any():
+        delta_l = lightness - np.median(lightness[reference])
+        delta_a = a_star - np.median(a_star[reference])
+        delta_b = b_star - np.median(b_star[reference])
+        chroma = np.hypot(a_star, b_star)
+        green_hue = (hue >= HEALTHY_HUE_RANGE[0]) & (hue <= HEALTHY_HUE_RANGE[1])
+        discolored = (
+            (delta_a >= LESION_MIN_DELTA_A)
+            | ((delta_a >= LESION_YELLOW_MIN_DELTA_A) & (delta_b >= LESION_YELLOW_MIN_DELTA_B))
+            | (~green_hue & (delta_a >= 0) & (delta_l <= -LESION_DARK_MIN_DELTA_L))
+        )
+        near_edge = cv2.distanceTransform(leaf_mask, cv2.DIST_L2, 5) <= SHADOW_MAX_EDGE_DIST_PX
+        shadow = (chroma < SHADOW_MAX_CHROMA) & (value < SHADOW_MAX_VALUE) & near_edge
+        candidates = (
+            discolored & ~shadow & (chroma >= LESION_MIN_CHROMA) & (value >= LESION_MIN_VALUE)
+        )
+    else:
+        candidates = np.zeros_like(in_leaf)
 
     edge_kernel_size = LESION_EDGE_MARGIN_PX * 2 + 1
     edge_kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, (edge_kernel_size, edge_kernel_size),
     )
     leaf_core = cv2.erode(leaf_mask, edge_kernel)
-    lesion_candidates = (
-        (healthy_mask == 0)
-        & (saturation >= LESION_MIN_SATURATION)
-        & (value >= HEALTHY_MIN_VALUE)
-        & (leaf_core > 0)
-    )
-    lesion_mask_raw = np.where(lesion_candidates, 255, 0).astype(np.uint8)
+    lesion_mask_raw = np.where(candidates & (leaf_core > 0), 255, 0).astype(np.uint8)
 
     open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, LESION_OPEN_KSIZE)
     close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, LESION_CLOSE_KSIZE)
