@@ -7,6 +7,7 @@ import matplotlib
 import numpy as np
 
 from experiments import evaluate, visualize_morphology
+from image_processing import segmentation, steps
 
 
 class MorphologyFigureTests(TestCase):
@@ -19,9 +20,11 @@ class MorphologyFigureTests(TestCase):
         self.leaf = visualize_morphology._leaf_segmentation_stages(
             self.image,
         )[-1]
-        self.raw_lesion = np.zeros_like(self.leaf)
-        cv2.circle(self.raw_lesion, (48, 48), 8, 255, -1)
-        self.lesion = self.raw_lesion.copy()
+        # Đốm nâu ở giữa lá; mask bệnh lấy từ segment_lesions thật để khớp kiểm tra của plot_morphology
+        cv2.circle(self.image, (48, 48), 8, (30, 60, 140), -1)
+        self.lesion, intermediates = segmentation.segment_lesions(self.image, self.leaf)
+        self.raw_lesion = intermediates[steps.LESION_MASK_RAW]
+        self.assertGreater(cv2.countNonZero(self.lesion), 0)
 
     def assert_png(self, path):
         self.assertTrue(path.is_file())
@@ -40,6 +43,27 @@ class MorphologyFigureTests(TestCase):
         )
 
         self.assert_png(output)
+
+    def test_plot_morphology_rejects_lesion_mask_not_from_pipeline(self):
+        # Mask cuối thiếu một đốm so với kết quả chạy lại các bước hình thái học
+        lesion = self.lesion.copy()
+        cv2.circle(lesion, (48, 48), 8, 0, -1)
+        with self.assertRaises(ValueError):
+            visualize_morphology.plot_morphology(
+                self.image, self.leaf, self.raw_lesion, lesion, self.tmp / 'x.png',
+            )
+
+    def test_false_positive_example_has_most_wrong_pixels(self):
+        empty = np.zeros_like(self.leaf)
+        cases = []
+        for name, radius in (('small', 4), ('large', 10)):
+            prediction = cv2.circle(empty.copy(), (48, 48), radius, 255, -1)
+            item = evaluate.GroundTruth(self.tmp / f'{name}.jpg', 'Tomato___healthy', self.leaf, empty)
+            metrics = evaluate.evaluate_image(self.leaf, empty, self.leaf, prediction)
+            cases.append(visualize_morphology.Example(item, self.image, prediction, metrics))
+        [(label, example)] = visualize_morphology._select_examples(cases)
+        self.assertEqual(label, 'Báo nhầm (mask chuẩn rỗng)')
+        self.assertEqual(example.item.path.stem, 'large')
 
     def test_plot_examples_shows_correct_and_incorrect_cases(self):
         empty = np.zeros_like(self.leaf)

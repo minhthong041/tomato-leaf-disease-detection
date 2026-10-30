@@ -68,8 +68,12 @@ def _mask_rgb(mask: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB)
 
 
+def _ksize(size: tuple[int, int]) -> str:
+    return f'{size[0]}×{size[1]}'
+
+
 def _leaf_segmentation_stages(image: np.ndarray) -> tuple[np.ndarray, ...]:
-    """Reproduce the exact mask stages used by segment_leaf for illustration."""
+    """Chạy lại đúng các bước tạo mask của segment_leaf để vẽ minh họa."""
     cv2.setRNGSeed(pipeline.RNG_SEED)
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     green_seed = cv2.inRange(
@@ -104,7 +108,7 @@ def plot_morphology(
     if not np.array_equal(leaf_filled, leaf_mask):
         raise ValueError('Các bước minh họa không khớp mask do segment_leaf tạo')
 
-    # Keep these operations in sync with segment_lesions when its morphology changes.
+    # Chạy lại phần hình thái học của segment_lesions: đổi segment_lesions thì phải sửa chỗ này theo
     open_kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, segmentation.LESION_OPEN_KSIZE,
     )
@@ -115,20 +119,32 @@ def plot_morphology(
     lesion_open_close = cv2.morphologyEx(
         lesion_opened, cv2.MORPH_CLOSE, close_kernel,
     )
+    edge_size = segmentation.LESION_EDGE_MARGIN_PX * 2 + 1
+    leaf_core = cv2.erode(leaf_mask, cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (edge_size, edge_size),
+    ))
+    lesion_in_core = cv2.bitwise_and(lesion_open_close, leaf_core)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(lesion_in_core, connectivity=8)
+    lesion_filtered = np.zeros_like(lesion_in_core)
+    for label in range(1, count):
+        if stats[label, cv2.CC_STAT_AREA] >= segmentation.LESION_MIN_AREA_PX:
+            lesion_filtered[labels == label] = 255
+    if not np.array_equal(lesion_filtered, lesion_mask):
+        raise ValueError('Các bước minh họa không khớp mask do segment_lesions tạo')
     contour_image = segmentation.draw_lesions(image, lesion_mask)
 
     panels = [
         (cv2.cvtColor(image, cv2.COLOR_BGR2RGB), 'Ảnh sau tiền xử lý'),
         (_mask_rgb(leaf_seed), 'Seed xanh HSV'),
         (_mask_rgb(leaf_grabcut), 'Sau GrabCut + khôi phục mép màu ấm'),
-        (_mask_rgb(leaf_closed), 'Sau Closing lá 5×5'),
+        (_mask_rgb(leaf_closed), f'Sau Closing lá {_ksize(segmentation.LEAF_CLOSE_KSIZE)}'),
         (_mask_rgb(leaf_filled), 'Mask lá sau tô contour'),
         (_mask_rgb(lesion_raw), 'Mask bệnh thô'),
-        (_mask_rgb(lesion_opened), 'Sau Opening 5×5'),
-        (_mask_rgb(lesion_open_close), 'Sau Closing 5×5'),
+        (_mask_rgb(lesion_opened), f'Sau Opening {_ksize(segmentation.LESION_OPEN_KSIZE)}'),
+        (_mask_rgb(lesion_open_close), f'Sau Closing {_ksize(segmentation.LESION_CLOSE_KSIZE)}'),
         (
             _mask_rgb(lesion_mask),
-            'Sau giao leaf_core + lọc thành phần ≥40 px',
+            f'Sau giao leaf_core + lọc thành phần ≥{segmentation.LESION_MIN_AREA_PX} px',
         ),
         (
             cv2.cvtColor(contour_image, cv2.COLOR_BGR2RGB),
@@ -189,7 +205,10 @@ def _select_examples(
         if cv2.countNonZero(case.lesion_mask) == 0
     ]
     if false_positives:
-        selected.append(('Báo nhầm (mask chuẩn rỗng)', false_positives[0]))
+        # Lấy ảnh báo nhầm nhiều pixel nhất để hình thấy rõ lỗi
+        selected.append(('Báo nhầm (mask chuẩn rỗng)', max(
+            false_positives, key=lambda case: cv2.countNonZero(case.lesion_mask),
+        )))
     if true_negatives:
         selected.append(('Đúng âm (mask chuẩn rỗng)', true_negatives[0]))
     if not selected:

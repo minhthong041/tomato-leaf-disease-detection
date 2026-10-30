@@ -38,8 +38,8 @@ chính chiếc lá, thay vì dùng một ngưỡng Hue/Saturation chung cho mọ
 2. Tạo ứng viên đổi màu nếu a* tăng ít nhất 12 so với mốc xanh; hoặc a* tăng
    ít nhất 3 đồng thời b* tăng ít nhất 8 (vàng đậm); hoặc pixel không thuộc
    Hue xanh 35–85, a* không giảm và L* tối hơn mốc ít nhất 20 (mô hoại tử tối).
-   Ứng viên cần V ≥ 30 và chroma ít nhất 8, ngoại trừ mô chết tối nằm sâu
-   trong lá.
+   Ứng viên cần V ≥ 30 và chroma ít nhất 8; mô chết tối nằm sâu trong lá
+   được bỏ điều kiện chroma nhưng vẫn cần V ≥ 30.
 3. Loại bóng đổ ít màu và tối (chroma < 10, V < 90) trong dải 15 px sát mép.
    Ngoại lệ mô chết tối chỉ được giữ ở lõi lá: cách biên hơn 25 px, tối hơn
    mốc ít nhất 20 đơn vị L* và a* tăng ít nhất 5.
@@ -73,9 +73,8 @@ ghi nhận báo nhầm khi `A_lesion > 0`.
 
 ## Đánh giá trên 30 mask chuẩn
 
-Số liệu main dưới đây lấy từ lần chạy `python experiments/evaluate.py` do nhóm
-cung cấp trên commit main `62cbe6b54e37debe01e21f7bedd102a3b9288d5e`, cùng 30
-ảnh mask chuẩn của việc 1D. Cột “Trước 2C” giữ số liệu baseline đã ghi nhận
+Số liệu dưới đây lấy từ `python experiments/evaluate.py` chạy trên commit
+`62cbe6b`, với 30 ảnh mask chuẩn của việc 1D. Cột “Trước 2C” giữ số liệu baseline đã ghi nhận
 trước khi chốt thuật toán LAB; cột main phản ánh mã segmentation hiện tại.
 
 | Chỉ số `evaluate.py` | Trước 2C | Main `62cbe6b` |
@@ -92,6 +91,8 @@ trước khi chốt thuật toán LAB; cột main phản ánh mã segmentation h
 |---|---:|---:|---:|
 | Early blight | 0.198 → 0.146 | 25.88 → 28.55 | — |
 | Target Spot | 0.127 → 0.198 | 1.64 → 0.80 | — |
+| Xoăn vàng lá (virus) | — | — | 3/3 → 3/3 |
+| Khảm (virus) | — | — | 2/3 → 1/3 |
 | Lá khỏe | — | — | 3/3 → 2/3 |
 
 IoU/Dice vết bệnh và sai số S trung bình toàn bộ được cải thiện; tỷ lệ đúng
@@ -101,11 +102,6 @@ S. Một ảnh Early blight (`RS_Erly.B 7617`) có 24.376/31.944 pixel mask bệ
 nằm ngoài `leaf_mask` dự đoán. Giai đoạn 3 không thể khôi phục các pixel này
 mà không vi phạm hợp đồng mask con hoặc thay đổi `segment_leaf`.
 
-> **Tái lập:** mã `evaluate.py` và `segmentation.py` trong nhánh này khớp với
-> commit main `62cbe6b54e37debe01e21f7bedd102a3b9288d5e`. Ảnh PlantVillage gốc
-> không có trong checkout hiện tại, nên cần bộ ảnh chia sẻ của nhóm để chạy lại
-> độc lập `evaluate.py`.
-
 ## Hình minh họa
 
 Từ thư mục `backend/`, chạy trên bộ mask chuẩn:
@@ -114,7 +110,7 @@ Từ thư mục `backend/`, chạy trên bộ mask chuẩn:
 python experiments/visualize_morphology.py --out experiments\output\morphology
 ```
 
-Script dùng backend Matplotlib `Agg`; lưu panel ảnh gốc, mask lá, mask bệnh
+Script dùng backend Matplotlib `Agg`; lưu panel ảnh sau tiền xử lý, mask lá, mask bệnh
 qua seed xanh, GrabCut, Closing, tô contour, mask bệnh trước/sau Opening và
 Closing, mask cuối sau giao `leaf_core`/lọc thành phần và contour vào
 `experiments/output/`. Hình `examples_correct_vs_wrong.png` chọn bốn trường

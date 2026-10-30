@@ -32,7 +32,7 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Khung pipeline và quy ước vào/ra ([docs/pipeline.md](docs/pipeline.md)) | Xong |
 | Chia dữ liệu train/test | Xong — 80/20 theo từng lớp ([experiments/split_dataset.py](backend/experiments/split_dataset.py), `dataset/splits/*.txt`); tên thư mục lớp phải trùng `diseases.code` |
 | Giai đoạn 1: tiền xử lý (resize, Bilateral, CLAHE) | Xong |
-| Giai đoạn 2–3: tách lá, tách đốm bệnh | Xong bản đầu, ngưỡng đốm bệnh còn tạm thời |
+| Giai đoạn 2–3: tách lá, tách đốm bệnh | Xong — ngưỡng chốt ở 2C; chương và hình minh họa ở `docs/GiaiDoan2_3.md` (2D) |
 | Giai đoạn 4: trích đặc trưng GLCM + Color Moments | Xong |
 | Giai đoạn 4: huấn luyện SVM / Random Forest | Xong (3E) — so sánh trên cùng đặc trưng của 3C, chọn SVM (C=1000, gamma=0,03): accuracy 0,893, macro F1 0,859; Random Forest: 0,843 / 0,798 |
 | Cấp độ 0–4 và khuyến nghị IPM | Xong |
