@@ -57,6 +57,11 @@ class PickTests(TestCase):
         self.assertEqual((picked['du_doan'], picked['do_tin_cay']), (MOSAIC, 0.40))
         self.assertIsNone(demo.pick_low_confidence(rows[3:]))
 
+    def test_low_confidence_prefers_single_warning(self):
+        # Đoán sai nhưng thêm cảnh báo "bệnh nhưng Cấp 0" -> nhường cho ảnh chỉ có cảnh báo độ tin cậy thấp
+        rows = [row(EARLY, MOSAIC.replace('mosaic_virus', 'X'), 0.54, level=0), row(EARLY, EARLY, 0.45)]
+        self.assertEqual(demo.pick_low_confidence(rows)['do_tin_cay'], 0.45)
+
 
 class LoadAsWebTests(TestCase):
     def test_same_pixels_as_upload_api(self):
@@ -75,8 +80,19 @@ class LoadAsWebTests(TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'hong.jpg'
             path.write_bytes(b'khong phai anh')
-            with self.assertRaises(Exception):
+            with self.assertRaises(PipelineError):
                 demo.load_as_web(path)
+
+    def test_unreadable_file_does_not_stop_run(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            path = root / 'plantvillage' / EARLY / 'hong.jpg'
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b'khong phai anh')
+            with mock.patch.object(demo, 'DATASET_DIR', root):
+                row = demo.diagnose(path)
+        self.assertEqual(row['loi'], demo.UNREADABLE_MESSAGE)
+        self.assertEqual(row['anh_goc'], f'plantvillage/{EARLY}/hong.jpg')  # dấu / như test.txt
 
 
 class UnusableImageTests(TestCase):
@@ -133,6 +149,36 @@ class MainTests(TestCase):
             self.assertEqual(demo.main(['--per-class', '3', '--out', str(out)]), 0)
         tried = {call.args[0].name for call in diagnose.call_args_list if call.args[0].parent.name == EARLY}
         self.assertEqual(tried, {'anh 0.JPG', 'anh 2.JPG'})
+
+    def test_keeps_other_files_in_out_dir(self):
+        out = self.root / 'output'
+        out.mkdir()
+        (out / 'evaluate.csv').write_text('ket qua khac')        # file của thí nghiệm khác
+        (out / 'cache').mkdir()
+        (out / '05_cu.jpg').write_bytes(b'cu')                   # ảnh demo lần trước
+        with mock.patch.object(demo, 'DATASET_DIR', self.root), \
+                mock.patch.object(demo, 'TEST_SPLIT', self.split), \
+                mock.patch.object(demo, 'diagnose', side_effect=self.fake_diagnose):
+            self.assertEqual(demo.main(['--per-class', '3', '--out', str(out)]), 0)
+        self.assertEqual((out / 'evaluate.csv').read_text(), 'ket qua khac')
+        self.assertTrue((out / 'cache').is_dir())
+        self.assertFalse((out / '05_cu.jpg').exists())
+        self.assertTrue((out / '01_Early_blight.jpg').exists())
+
+    def test_sample_of_a_class_does_not_depend_on_other_classes(self):
+        def tried(lines):
+            self.split.write_text('\n'.join(lines), encoding='utf-8')
+            with mock.patch.object(demo, 'DATASET_DIR', self.root), \
+                    mock.patch.object(demo, 'TEST_SPLIT', self.split), \
+                    mock.patch.object(demo, 'diagnose', side_effect=self.fake_diagnose) as diagnose:
+                demo.main(['--per-class', '2', '--out', str(self.root / 'demo')])
+            return [c.args[0].name for c in diagnose.call_args_list if c.args[0].parent.name == MOSAIC]
+
+        lines = self.split.read_text(encoding='utf-8').splitlines()
+        full = tried(lines)
+        # Bớt ảnh của lớp đứng trước (Đốm vòng): mẫu của Khảm lá không đổi
+        fewer = tried([line for line in lines if not line.endswith(f'{EARLY}/anh 0.JPG')])
+        self.assertEqual(full, fewer)
 
     def test_missing_dataset(self):
         with mock.patch.object(demo, 'DATASET_DIR', self.root / 'khong_co'), \

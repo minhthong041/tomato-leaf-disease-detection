@@ -11,7 +11,8 @@ Bộ ảnh gồm:
 - một ảnh không dùng được: ảnh tự tạo không có lá, pipeline báo lỗi "Không tìm thấy lá trong ảnh".
 
 Chỉ lấy ảnh trong tập test (dataset/splits/test.txt): mô hình chưa thấy ảnh này lúc huấn luyện.
-Ảnh được chép vào experiments/output/demo/ (không đưa lên git) kèm demo_images.csv; bảng Markdown in ra
+Ảnh được chép vào experiments/output/demo/ (không đưa lên git) kèm demo_images.csv; chạy lại chỉ thay các file
+script đã tạo (NN_*.jpg/png, demo_images.csv), file khác trong thư mục giữ nguyên; bảng Markdown in ra
 để dán vào docs/demo.md. Quy tắc cảnh báo giống frontend/src/constants/diagnosis.js (resultWarnings).
 """
 import argparse
@@ -46,6 +47,10 @@ NO_LESION_DISEASE_CODES = ('Tomato___Tomato_Yellow_Leaf_Curl_Virus', 'Tomato___T
 DEFAULT_PER_CLASS = 20
 SEED = 42
 UNUSABLE_NAME = '12_khong_dung_duoc.png'
+CSV_NAME = 'demo_images.csv'
+# File do script tạo ra trong thư mục --out (chỉ xóa đúng các file này trước khi chép lại)
+OUTPUT_PATTERN = '[0-9][0-9]_*'
+UNREADABLE_MESSAGE = 'Không đọc được ảnh. Hãy tải lên ảnh JPG hoặc PNG.'  # trùng api/services.decode_image
 CSV_COLUMNS = ('file', 'vai_tro', 'anh_goc', 'lop_that', 'du_doan', 'do_tin_cay', 'cap', 'canh_bao', 'loi')
 
 
@@ -80,17 +85,23 @@ def load_as_web(path: Path) -> np.ndarray:
     Lưu lại JPG làm điểm ảnh đổi nhẹ; ảnh sát ngưỡng có thể cho kết quả khác hẳn đọc thẳng file gốc,
     nên phải đọc như web thì bảng trong docs/demo.md mới khớp màn hình lúc demo.
     """
-    with open(path, 'rb') as f:
-        cleaned = strip_image_metadata(File(f, name=path.name))
+    try:
+        with open(path, 'rb') as f:
+            cleaned = strip_image_metadata(File(f, name=path.name))
+    except (OSError, ValueError) as exc:
+        # File hỏng hoặc không phải ảnh (Pillow ném UnidentifiedImageError, là con của OSError):
+        # báo như ảnh không dùng được, giống api/services.decode_image, để lượt chạy không dừng giữa chừng
+        raise PipelineError(UNREADABLE_MESSAGE) from exc
     image = cv2.imdecode(np.frombuffer(cleaned.read(), np.uint8), cv2.IMREAD_COLOR)
     if image is None:
-        raise PipelineError('Không đọc được ảnh. Hãy tải lên ảnh JPG hoặc PNG.')
+        raise PipelineError(UNREADABLE_MESSAGE)
     return image
 
 
 def diagnose(path: Path) -> dict:
     """Chạy pipeline như trên web, trả một dòng kết quả."""
-    row = {'anh_goc': str(path.relative_to(DATASET_DIR)), 'lop_that': path.parent.name, 'loi': ''}
+    # Dấu / như test.txt, kể cả trên Windows
+    row = {'anh_goc': path.relative_to(DATASET_DIR).as_posix(), 'lop_that': path.parent.name, 'loi': ''}
     try:
         result = pipeline.run(load_as_web(path))
     except PipelineError as exc:
@@ -112,9 +123,17 @@ def pick_class_image(rows: list[dict]) -> dict | None:
 
 
 def pick_low_confidence(rows: list[dict]) -> dict | None:
-    """Ảnh có cảnh báo độ tin cậy thấp; ưu tiên ảnh đoán sai, rồi độ tin cậy gần ngưỡng nhất (không quá vô lý)."""
+    """Ảnh có cảnh báo độ tin cậy thấp.
+
+    Ưu tiên lần lượt: chỉ có đúng cảnh báo này (dễ giải thích lúc demo), mô hình đoán sai (để demo nút
+    "Báo kết quả sai"), độ tin cậy gần ngưỡng nhất.
+    """
     low = [r for r in rows if not r['loi'] and 'do_tin_cay_thap' in r['canh_bao']]
-    return max(low, key=lambda r: (r['du_doan'] != r['lop_that'], r['do_tin_cay']), default=None)
+    return max(
+        low,
+        key=lambda r: (r['canh_bao'] == ['do_tin_cay_thap'], r['du_doan'] != r['lop_that'], r['do_tin_cay']),
+        default=None,
+    )
 
 
 def make_unusable_image(size: int = 512) -> np.ndarray:
@@ -168,9 +187,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f'Cảnh báo: {code} thiếu {len(listed[code]) - len(paths)}/{len(listed[code])} ảnh test',
                   file=sys.stderr)
 
-    rng = random.Random(SEED)
     all_rows, chosen = [], []
     for number, code in enumerate(sorted(by_class), start=1):
+        # RNG riêng cho từng lớp: mẫu của một lớp không đổi khi lớp khác thiếu hoặc thêm ảnh
+        rng = random.Random(f'{SEED}-{code}')
         sample = rng.sample(by_class[code], min(args.per_class, len(by_class[code])))
         print(f'[{number}/{len(by_class)}] {code}: thử {len(sample)} ảnh...', flush=True)
         rows = [diagnose(path) for path in sample]
@@ -191,9 +211,12 @@ def main(argv: list[str] | None = None) -> int:
                        'vai_tro': 'cảnh báo độ tin cậy thấp'})
 
     out_dir = Path(args.out)
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # Chỉ xóa file script đã tạo lần trước, không xóa cả thư mục (lỡ truyền --out experiments/output)
+    for old in out_dir.glob(OUTPUT_PATTERN):
+        if old.is_file():
+            old.unlink()
+    (out_dir / CSV_NAME).unlink(missing_ok=True)
     for r in chosen:
         shutil.copyfile(DATASET_DIR / r['anh_goc'], out_dir / r['file'])
 
@@ -209,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
     chosen.append({'file': UNUSABLE_NAME, 'vai_tro': 'ảnh không dùng được', 'anh_goc': '(ảnh tự tạo, không có lá)',
                    'lop_that': '', 'loi': error or '(không lỗi)'})
 
-    with open(out_dir / 'demo_images.csv', 'w', newline='', encoding='utf-8-sig') as f:
+    with open(out_dir / CSV_NAME, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, extrasaction='ignore')
         writer.writeheader()
         for r in chosen:
