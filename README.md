@@ -36,12 +36,13 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 | Giai đoạn 4: trích đặc trưng GLCM + Color Moments | Xong |
 | Giai đoạn 4: huấn luyện SVM / Random Forest | Xong (3E) — so sánh trên cùng đặc trưng của 3C, chọn SVM (C=1000, gamma=0,03): accuracy 0,893, macro F1 0,859; Random Forest: 0,843 / 0,798 |
 | Cấp độ 0–4 và khuyến nghị IPM | Xong |
-| Khuyến nghị theo từng bệnh | Xong — nội dung 3D trong `backend/api/recommendations.py` (khóa theo `diseases.code`), API trả `disease_recommendation`; trang kết quả hiện cả khuyến nghị theo cấp và theo bệnh (bệnh virus, nhện đỏ, lá khỏe chỉ hiện theo bệnh) |
+| Khuyến nghị theo từng bệnh | Xong — nội dung 3D trong `backend/api/recommendations.py` (khóa theo `diseases.code`), API trả `disease_recommendation`; trang kết quả hiện cả khuyến nghị theo cấp và theo bệnh (bệnh virus, nhện đỏ, lá khỏe chỉ hiện theo bệnh, trừ khi độ tin cậy dưới ngưỡng cảnh báo hoặc lá khỏe mà Cấp ≥ 1 thì hiện cả hai) |
 | Danh sách lớp bệnh (bảng `diseases`) | Xong — đủ 10 lớp lá cà chua của PlantVillage, nạp bằng migration |
 | API tải ảnh, lịch sử, kết quả, đánh dấu | Xong — chạy pipeline ngay trong request, trả `done` hoặc `failed` (ảnh không chẩn đoán được hoặc lỗi hệ thống); lọc đã lưu bằng `?is_bookmarked=true` |
 | Phản hồi kết quả sai, báo lỗi | Xong — `POST /api/feedbacks/`, `POST /api/error-reports/`; nút "Báo kết quả sai" trên trang kết quả, trang `/error-report`; quản trị viên xử lý trong `/admin/` |
-| Cảnh báo kết quả đáng ngờ | Xong — trang kết quả cảnh báo khi độ tin cậy dưới 60% (3E đề xuất 0,55, chờ cập nhật ở frontend) hoặc tên bệnh mâu thuẫn với cấp độ, gợi ý gửi phản hồi |
+| Cảnh báo kết quả đáng ngờ | Xong — trang kết quả cảnh báo khi độ tin cậy dưới 0,55 (ngưỡng theo 3E) hoặc tên bệnh mâu thuẫn với cấp độ, gợi ý gửi phản hồi |
 | Giao diện frontend | Có khung: đăng nhập, đăng ký, điều khoản, tải ảnh, kết quả (lưu / bỏ lưu), lịch sử (lọc đã lưu), phản hồi, báo lỗi — đã nối API |
+| Demo và chương Web | Xong — kịch bản [docs/demo.md](docs/demo.md), bộ ảnh mẫu chọn bằng `experiments/pick_demo_images.py`, chương Web [docs/chuong-web.md](docs/chuong-web.md) |
 
 ## Công nghệ
 
