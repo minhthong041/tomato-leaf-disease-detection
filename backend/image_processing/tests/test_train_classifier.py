@@ -270,6 +270,12 @@ class TrainEvaluateTests(unittest.TestCase):
             self.assertLessEqual(metrics["accuracy"], 1)
             self.assertTrue((output_dir / "confusion_matrix_svm.png").is_file())
 
+    def test_evaluate_baseline_saves_own_confusion_matrix(self):
+        model = training.train(self.X, self.y)
+        with tempfile.TemporaryDirectory() as tmp:
+            training.evaluate(model, self.X, self.y, Path(tmp), name=training.BASELINE_NAME)
+            self.assertTrue((Path(tmp) / "confusion_matrix_svm_3c.png").is_file())
+
     def test_random_forest_supports_predict_proba(self):
         model = training.train(self.X, self.y, "random_forest", n_estimators=20)
         probabilities = model.predict_proba(self.X[:3])

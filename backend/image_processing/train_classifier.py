@@ -52,11 +52,14 @@ LOW_CONFIDENCE_TARGET_RECALL = 0.5
 LOW_CONFIDENCE_CANDIDATES = tuple(np.round(np.arange(0.30, 0.951, 0.05), 2))
 
 MODEL_TITLES = {"svm": "SVM", "random_forest": "Random Forest"}
+# Mốc so sánh: SVM tham số mặc định như 3C (#23), đo cùng cách với các model 3E
+BASELINE_NAME = "svm_3c"
+PLOT_TITLES = {**MODEL_TITLES, BASELINE_NAME: "SVM 3C (tham số mặc định)"}
 # Siêu tham số thử khi tinh chỉnh; tham số cố định nằm trong make_model
 PARAM_GRIDS = {
     "svm": {
-        "svc__C": [10, 100, 300, 1000],
-        "svc__gamma": ["scale", 0.03, 0.1, 0.3],
+        "svc__C": [100, 300, 1000, 3000, 10000],
+        "svc__gamma": [0.003, 0.01, 0.03, 0.1],
     },
     "random_forest": {
         "n_estimators": [300],
@@ -401,7 +404,7 @@ def evaluate(
             values_format="d",
             colorbar=False,
         )
-        ax.set_title(f"Ma trận nhầm lẫn - {MODEL_TITLES.get(name, name)}")
+        ax.set_title(f"Ma trận nhầm lẫn - {PLOT_TITLES.get(name, name)}")
         ax.set_xlabel("Nhãn dự đoán")
         ax.set_ylabel("Nhãn thực tế")
         fig.tight_layout()
@@ -447,6 +450,12 @@ def main() -> None:
     """So sánh SVM với Random Forest, lưu model tốt hơn và đề xuất ngưỡng tin cậy."""
     start = time.perf_counter()
     X_train, y_train, X_test, y_test = _load_features()
+
+    # Mốc 3C: cùng đặc trưng, tham số mặc định, đo cùng cách với các model 3E
+    print(f"Huấn luyện mốc {PLOT_TITLES[BASELINE_NAME]}...")
+    baseline = train(X_train, y_train, "svm")
+    baseline_metrics = evaluate(baseline, X_test, y_test, name=BASELINE_NAME)
+    baseline_metrics["model_bytes"] = model_size_bytes(baseline)
 
     results = {}
     models = {}
@@ -521,6 +530,7 @@ def main() -> None:
 
     summary = {
         "chosen_model": chosen,
+        "baseline_3c": baseline_metrics,
         "models": results,
         "low_confidence": threshold,
         "train_samples": len(y_train),
@@ -537,6 +547,10 @@ def main() -> None:
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
+    print(
+        f"{PLOT_TITLES[BASELINE_NAME]}: accuracy {baseline_metrics['accuracy']:.4f}, "
+        f"macro F1 {baseline_metrics['macro_f1']:.4f}"
+    )
     for name, metrics in results.items():
         print(
             f"{MODEL_TITLES[name]}: accuracy {metrics['accuracy']:.4f}, "
