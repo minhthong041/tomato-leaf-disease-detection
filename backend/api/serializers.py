@@ -79,6 +79,14 @@ class DiagnosisSerializer(serializers.ModelSerializer):
             return None
         return disease_recommendation(obj.disease.code)
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Trang Lịch sử không dùng khuyến nghị theo bệnh: bỏ khỏi API danh sách cho nhẹ
+        view = self.context.get('view')
+        if getattr(view, 'action', None) == 'list':
+            data.pop('disease_recommendation', None)
+        return data
+
 
 class DiagnosisCreateSerializer(serializers.Serializer):
     """Dữ liệu gửi lên khi tạo chẩn đoán: multipart, trường "image"."""

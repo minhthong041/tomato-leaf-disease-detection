@@ -97,11 +97,15 @@ class DiagnosisRecommendationApiTests(APITestCase):
         self.assertEqual(
             response.data['disease_recommendation'], disease_recommendation('Tomato___Early_blight'),
         )
-        # Chi tiết và danh sách trả cùng dữ liệu
+        # Chi tiết trả cùng dữ liệu; danh sách (trang Lịch sử) không kèm
         detail = self.client.get(f'/api/diagnoses/{response.data["id"]}/')
         self.assertEqual(detail.data['disease_recommendation'], response.data['disease_recommendation'])
         listing = self.client.get('/api/diagnoses/')
-        self.assertEqual(listing.data['results'][0]['disease_recommendation'], response.data['disease_recommendation'])
+        self.assertNotIn('disease_recommendation', listing.data['results'][0])
+        self.assertIn('recommendation', listing.data['results'][0])
+        # PATCH đánh dấu vẫn trả đủ
+        patched = self.client.patch(f'/api/diagnoses/{response.data["id"]}/', {'is_bookmarked': True}, format='json')
+        self.assertEqual(patched.data['disease_recommendation'], response.data['disease_recommendation'])
 
     def test_virus_replaces_severity_advice(self):
         result = make_result(disease_code='Tomato___Tomato_mosaic_virus')
