@@ -8,6 +8,7 @@ import { Link, useParams } from 'react-router';
 import { errorMessage } from '../api/client';
 import { getDiagnosis } from '../api/diagnoses';
 import BookmarkButton from '../components/BookmarkButton';
+import DiseaseRecommendation from '../components/DiseaseRecommendation';
 import FeedbackDialog from '../components/FeedbackDialog';
 import ResultWarning from '../components/ResultWarning';
 import SeverityGauge from '../components/SeverityGauge';
@@ -79,6 +80,9 @@ export default function ResultPage() {
 
   const { disease } = diagnosis;
   const hasWarnings = resultWarnings(diagnosis).length > 0;
+  const diseaseAdvice = diagnosis.disease_recommendation;
+  // Bệnh virus, nhện đỏ, lá khỏe: khuyến nghị chung theo cấp không đúng, chỉ hiện khuyến nghị theo bệnh
+  const showSeverityAdvice = !diseaseAdvice?.replaces_severity_advice;
   return (
     <Stack spacing={3}>
       <Stack direction="row" spacing={1} useFlexGap
@@ -118,12 +122,16 @@ export default function ResultPage() {
               {' '}· {diagnosis.lesion_count} đốm bệnh
             </Typography>
             <SeverityGauge level={diagnosis.severity_level} />
-            <Alert severity={diagnosis.severity_level >= 2 ? 'warning' : 'success'}>
-              <strong>Khuyến nghị IPM:</strong> {diagnosis.recommendation}
-            </Alert>
+            {showSeverityAdvice && (
+              <Alert severity={diagnosis.severity_level >= 2 ? 'warning' : 'success'}>
+                <strong>Khuyến nghị IPM theo cấp độ:</strong> {diagnosis.recommendation}
+              </Alert>
+            )}
           </Stack>
         </CardContent>
       </Card>
+
+      <DiseaseRecommendation disease={disease} recommendation={diseaseAdvice} />
 
       {diagnosis.steps?.length > 0 && (
         <Box>
