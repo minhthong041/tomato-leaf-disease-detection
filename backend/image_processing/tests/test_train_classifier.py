@@ -1,5 +1,7 @@
 """Unit tests cho quy trình huấn luyện SVM."""
 
+import inspect
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -315,6 +317,17 @@ class TestConfidenceThreshold(unittest.TestCase):
         self.assertEqual(result["threshold"], 0.5)
         self.assertAlmostEqual(result["flagged_ratio"], 2 / 6)
         self.assertAlmostEqual(result["accepted_accuracy"], 3 / 4)
+        self.assertTrue(result["target_reached"])
+
+    def test_warns_when_no_threshold_reaches_target(self):
+        confidences = np.array([0.95, 0.9, 0.85, 0.42, 0.38, 0.55])
+        correct = np.array([True, True, True, False, False, False])
+        with self.assertWarns(UserWarning):
+            result = training.suggest_confidence_threshold(
+                confidences, correct, target_recall=1.0, candidates=(0.3, 0.4)
+            )
+        self.assertEqual(result["threshold"], 0.4)
+        self.assertFalse(result["target_reached"])
 
     def test_rejects_mismatched_inputs(self):
         with self.assertRaises(ValueError):
@@ -344,6 +357,24 @@ class TestFeatureSignature(unittest.TestCase):
             with patch.object(training.segmentation, "LEAF_GRABCUT_ITERATIONS", 99):
                 after = training.feature_signature([image_path])
         self.assertNotEqual(before, after)
+
+    def test_covers_all_helpers_of_segment_leaf(self):
+        # Dò mọi hàm của segmentation mà segment_leaf gọi (cả gián tiếp): thiếu hàm nào
+        # trong _FEATURE_FUNCTIONS thì sửa hàm đó sẽ không làm mới cache đặc trưng
+        segmentation = training.segmentation
+        listed = set(training._FEATURE_FUNCTIONS)
+        todo, seen = [segmentation.segment_leaf], set()
+        while todo:
+            function = todo.pop()
+            if function in seen:
+                continue
+            seen.add(function)
+            for name in re.findall(r"\b(_?[a-z][a-z0-9_]*)\(", inspect.getsource(function)):
+                helper = getattr(segmentation, name, None)
+                if inspect.isfunction(helper) and helper.__module__ == segmentation.__name__:
+                    todo.append(helper)
+        missing = sorted(function.__name__ for function in seen - listed)
+        self.assertEqual(missing, [], "Thêm các hàm này vào _FEATURE_FUNCTIONS")
 
 
 if __name__ == "__main__":

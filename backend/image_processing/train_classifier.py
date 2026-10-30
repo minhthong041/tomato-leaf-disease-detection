@@ -5,6 +5,7 @@ import inspect
 import io
 import json
 import time
+import warnings
 from pathlib import Path
 
 import cv2
@@ -129,8 +130,10 @@ def _features_for_path(path: Path) -> np.ndarray:
         raise RuntimeError(f"Không thể trích đặc trưng ảnh: {path}") from exc
 
 
-# Các hàm quyết định giá trị đặc trưng. Giữ tham chiếu lúc import để patch trong test
-# không làm đổi signature.
+# Các hàm quyết định giá trị đặc trưng; feature_signature chỉ băm các hàm này và hằng LEAF_*.
+# Sửa segmentation mà segment_leaf gọi thêm hàm phụ mới thì phải thêm vào đây, nếu không cache
+# đặc trưng cũ vẫn bị dùng (test_covers_all_helpers_of_segment_leaf sẽ báo).
+# Giữ tham chiếu lúc import để patch trong test không làm đổi signature.
 _FEATURE_FUNCTIONS = (
     _features_for_path,
     leaf_mask_for,
@@ -321,7 +324,9 @@ def suggest_confidence_threshold(
     """Chọn ngưỡng nhỏ nhất bắt được ít nhất target_recall số dự đoán sai.
 
     Ảnh có độ tin cậy dưới ngưỡng bị cảnh báo. Trả về ngưỡng, tỉ lệ ảnh bị cảnh báo,
-    tỉ lệ dự đoán sai bị bắt và accuracy của các ảnh không bị cảnh báo.
+    tỉ lệ dự đoán sai bị bắt, accuracy của các ảnh không bị cảnh báo và target_reached.
+    Không ngưỡng nào đạt target_recall thì trả ngưỡng lớn nhất, target_reached=False
+    và phát cảnh báo.
     """
     confidences = np.asarray(confidences, dtype=np.float64)
     correct = np.asarray(correct, dtype=bool)
@@ -342,7 +347,14 @@ def suggest_confidence_threshold(
             ),
         }
         if recall >= target_recall:
-            break
+            chosen["target_reached"] = True
+            return chosen
+    # Không ngưỡng nào đạt mục tiêu: vẫn trả ngưỡng lớn nhất nhưng báo rõ
+    chosen["target_reached"] = False
+    warnings.warn(
+        f"Không ngưỡng nào bắt được {target_recall:.0%} dự đoán sai; "
+        f"dùng ngưỡng lớn nhất {chosen['threshold']:.2f}"
+    )
     return chosen
 
 
