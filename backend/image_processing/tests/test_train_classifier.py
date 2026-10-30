@@ -8,6 +8,7 @@ from unittest.mock import patch
 import numpy as np
 
 from image_processing import train_classifier as training
+from image_processing import pipeline
 
 
 class TestLoadSplit(unittest.TestCase):
@@ -62,17 +63,18 @@ class TestLeafMaskFor(unittest.TestCase):
             with self.assertRaises(ValueError):
                 training.leaf_mask_for(image)
 
-    def test_fallback_only_for_not_implemented(self):
+    def test_no_temporary_mask_fallback(self):
         image = np.zeros((16, 16, 3), dtype=np.uint8)
-        image[:, :, 1] = 255
         with patch.object(
             training.segmentation,
             "segment_leaf",
             side_effect=NotImplementedError,
         ):
-            mask = training.leaf_mask_for(image)
-        self.assertEqual(mask.shape, image.shape[:2])
-        self.assertGreater(np.count_nonzero(mask), 0)
+            with self.assertRaises(NotImplementedError):
+                training.leaf_mask_for(image)
+
+    def test_temp_threshold_removed(self):
+        self.assertFalse(hasattr(training, "TEMP_S_THRESHOLD"))
 
     def test_does_not_hide_segmentation_errors(self):
         image = np.zeros((16, 16, 3), dtype=np.uint8)
@@ -86,6 +88,9 @@ class TestLeafMaskFor(unittest.TestCase):
 
 
 class TestBuildFeatures(unittest.TestCase):
+    # Các test patch hàm trong module nên chạy với n_jobs=1 (cùng tiến trình):
+    # tiến trình con của joblib không thấy các patch này.
+
     def test_build_features_shape_and_labels(self):
         paths = [
             Path("dataset/Class_A/image one.JPG"),
@@ -108,11 +113,38 @@ class TestBuildFeatures(unittest.TestCase):
                 return_value=vector,
             ),
         ):
-            X, y = training.build_features(paths, split=None, use_cache=False)
+            X, y = training.build_features(paths, split=None, use_cache=False, n_jobs=1)
         self.assertEqual(X.shape, (2, 14))
         self.assertEqual(y.shape, (2,))
         self.assertEqual(list(y), ["Class_A", "Class_B"])
         self.assertEqual(X.dtype, np.float64)
+
+    def test_preserves_path_order(self):
+        paths = [
+            Path("dataset/Class_A/a.JPG"),
+            Path("dataset/Class_B/b.JPG"),
+            Path("dataset/Class_C/c.JPG"),
+        ]
+        image = np.zeros((16, 16, 3), dtype=np.uint8)
+        mask = np.full((16, 16), 255, dtype=np.uint8)
+        vectors = [np.full(14, value, dtype=np.float64) for value in (1, 2, 3)]
+        with (
+            patch.object(training, "load_image", return_value=image),
+            patch.object(
+                training.preprocessing,
+                "preprocess",
+                return_value=(image, {}),
+            ),
+            patch.object(training, "leaf_mask_for", return_value=mask),
+            patch.object(
+                training.classifier,
+                "extract_features",
+                side_effect=vectors,
+            ),
+        ):
+            X, y = training.build_features(paths, split=None, use_cache=False, n_jobs=1)
+        self.assertEqual(list(y), ["Class_A", "Class_B", "Class_C"])
+        np.testing.assert_array_equal(X[:, 0], [1, 2, 3])
 
     def test_rejects_empty_paths(self):
         with self.assertRaises(ValueError):
@@ -124,7 +156,37 @@ class TestBuildFeatures(unittest.TestCase):
             training, "load_image", side_effect=ValueError("Cannot decode image")
         ):
             with self.assertRaisesRegex(RuntimeError, "broken.JPG"):
-                training.build_features(paths, split=None, use_cache=False)
+                training.build_features(paths, split=None, use_cache=False, n_jobs=1)
+
+    def test_rejects_wrong_feature_length(self):
+        path = Path("dataset/Class_A/short.JPG")
+        image = np.zeros((16, 16, 3), dtype=np.uint8)
+        mask = np.full((16, 16), 255, dtype=np.uint8)
+        with (
+            patch.object(training, "load_image", return_value=image),
+            patch.object(
+                training.preprocessing,
+                "preprocess",
+                return_value=(image, {}),
+            ),
+            patch.object(training, "leaf_mask_for", return_value=mask),
+            patch.object(
+                training.classifier,
+                "extract_features",
+                return_value=np.zeros(5, dtype=np.float64),
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "short.JPG"):
+                training._features_for_path(path)
+
+    def test_fixes_opencv_seed_per_image(self):
+        with (
+            patch.object(training.cv2, "setRNGSeed") as set_seed,
+            patch.object(training, "load_image", side_effect=ValueError("stop")),
+        ):
+            with self.assertRaises(RuntimeError):
+                training._features_for_path(Path("dataset/Class_A/a.JPG"))
+        set_seed.assert_called_once_with(pipeline.RNG_SEED)
 
     def test_cache_is_reused_and_invalidated(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -150,16 +212,18 @@ class TestBuildFeatures(unittest.TestCase):
                     return_value=vector,
                 ),
             ):
-                first_X, first_y = training.build_features([image_path], split="smoke")
+                first_X, first_y = training.build_features(
+                    [image_path], split="smoke", n_jobs=1
+                )
                 second_X, second_y = training.build_features(
-                    [image_path], split="smoke"
+                    [image_path], split="smoke", n_jobs=1
                 )
                 self.assertEqual(loader.call_count, 1)
                 np.testing.assert_array_equal(first_X, second_X)
                 np.testing.assert_array_equal(first_y, second_y)
 
                 image_path.write_bytes(b"updated mock image")
-                training.build_features([image_path], split="smoke")
+                training.build_features([image_path], split="smoke", n_jobs=1)
                 self.assertEqual(loader.call_count, 2)
 
 
