@@ -85,10 +85,15 @@ diện tích contour lớn nhất được tô kín.
 **Tách vết bệnh** (`segment_lesions`) so màu từng điểm với mô xanh khỏe của
 chính lá đó trong không gian LAB: mốc là trung vị L\*, a\*, b\* của các điểm
 xanh bão hòa trong lá (H 40–85, S và V ≥ 40; ảnh `healthy_mask`), nên ngưỡng
-không phụ thuộc độ sáng hay cân bằng trắng của ảnh. Một điểm là vết bệnh khi
+không phụ thuộc độ sáng hay cân bằng trắng của ảnh. Lá có ít hơn 100 điểm như
+vậy (bệnh nặng) dùng mốc cố định `HEALTHY_REF_FALLBACK_LAB` = (124, −14, 16),
+trung vị mô xanh của 60 lá khỏe tập train; không lấy trung vị cả lá vì mốc sẽ
+bị kéo về màu vết bệnh. Một điểm là vết bệnh khi
 a\* lệch về phía đỏ/nâu ít nhất 12, hoặc lệch vàng đậm (a\* ≥ 3 và b\* ≥ 8),
 hoặc là mô hoại tử tối có Hue ngoài dải xanh 35–85 và L\* thấp hơn mốc ít nhất
-20 (thang 8 bit của OpenCV). Bị loại: điểm gần như không màu (độ sắc < 8), bóng
+20 (thang 8 bit của OpenCV). Bị loại: điểm gần như không màu (độ sắc < 8; trừ
+mô chết nâu đen cách mép lá hơn 25 pixel, tối hơn mốc ít nhất 20 và a\* lệch đỏ
+ít nhất 5, vì bóng đổ không nằm sâu trong lá), bóng
 đổ tối ít màu (độ sắc < 10, V < 90) trong dải 15 pixel sát mép lá, và mọi điểm
 cách biên `leaf_mask` tối đa 5 pixel. Sau đó opening và closing kernel elip
 5×5, bỏ thành phần nhỏ hơn 40 pixel. `lesion_mask` luôn là tập con của
@@ -112,8 +117,12 @@ train không có mask (60 lá khỏe, 12 ảnh mỗi lớp bệnh) để tránh 
   `segment_leaf` bỏ khỏi `leaf_mask`, nên `segment_lesions` cũng không thể
   tách chúng; đây là phần lớn sai số S còn lại trên 30 ảnh mask chuẩn.
 - Tách vết bệnh dựa vào đổi màu: virus làm lá biến dạng mà không đổi màu (xoăn
-  vàng lá, khảm) và mốc lá vàng nhạt, chấm nhện đỏ có màu gần mô khỏe nên khó
-  tách; lá có nhiều mô vàng úa có thể bị tính dư.
+  vàng lá, khảm) và mốc lá vàng nhạt có màu gần mô khỏe nên khó tách; lá có
+  nhiều mô vàng úa (xoăn vàng lá) có thể bị tính dư.
+- Chấm nhện đỏ là những điểm bạc màu, sáng hơn mô khỏe mà a\* gần như không đổi,
+  giống vùng lá phản sáng: thêm điều kiện "sáng hơn mốc" thì bắt lại được nhện
+  đỏ nhưng tỉ lệ lá khỏe ra cấp 0 giảm từ khoảng 45% xuống 17–27%, nên không
+  dùng. Nhện đỏ vì vậy bị đánh giá thấp mức độ (thường ra cấp 1).
 
 ### Xem trực quan segmentation
 

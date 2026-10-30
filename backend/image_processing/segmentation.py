@@ -30,11 +30,14 @@ LESION_OPEN_KSIZE = (5, 5)
 LESION_CLOSE_KSIZE = (5, 5)
 LESION_EDGE_MARGIN_PX = 5
 LESION_MIN_AREA_PX = 40
-# Mô xanh tham chiếu: điểm xanh bão hòa trong lá; cần ít nhất HEALTHY_REF_MIN_PX điểm, nếu không thì lấy cả lá
+# Mô xanh tham chiếu: điểm xanh bão hòa trong lá; cần ít nhất HEALTHY_REF_MIN_PX điểm
 HEALTHY_REF_HUE_RANGE = (40, 85)
 HEALTHY_REF_MIN_SATURATION = 40
 HEALTHY_REF_MIN_VALUE = 40
 HEALTHY_REF_MIN_PX = 100
+# Mốc dự phòng khi lá quá ít mô xanh (lá bệnh nặng): trung vị (L*, a*, b*) của mô xanh tham chiếu
+# trên 60 lá khỏe tập train. Không lấy trung vị cả lá vì khi đó mốc bị kéo về màu vết bệnh.
+HEALTHY_REF_FALLBACK_LAB = (124, -14, 16)
 # Vết bệnh nâu/đỏ: a* lệch về phía đỏ so với mô xanh tham chiếu
 LESION_MIN_DELTA_A = 12
 # Vết vàng đậm: a* lệch ít nhưng b* lệch nhiều về phía vàng
@@ -50,6 +53,11 @@ SHADOW_MAX_CHROMA = 10
 SHADOW_MAX_VALUE = 90
 # Bóng đổ chỉ nằm ở dải sát mép lá; mô hoại tử tối, ít màu ở giữa lá vẫn được giữ
 SHADOW_MAX_EDGE_DIST_PX = 15
+# Mô chết nâu đen (đốm vòng) gần như không màu nên được miễn LESION_MIN_CHROMA khi cách mép lá đủ xa,
+# tối hơn mốc và a* lệch về phía đỏ ít nhất LESION_DARK_CORE_MIN_DELTA_A (bóng xám không nằm sâu trong lá)
+LESION_DARK_CORE_MIN_EDGE_DIST_PX = 25
+LESION_DARK_CORE_MIN_DELTA_L = 20
+LESION_DARK_CORE_MIN_DELTA_A = 5
 
 
 def _validate_image(image: np.ndarray, name: str = 'image') -> None:
@@ -175,9 +183,11 @@ def segment_lesions(
     """Tách vết bệnh bằng độ lệch màu LAB so với mô xanh khỏe của chính lá đó.
 
     Mỗi ảnh lấy trung vị L*, a*, b* của các điểm xanh bão hòa trong lá làm mốc mô khỏe (ảnh
-    ``HEALTHY_MASK``), nên ngưỡng không phụ thuộc độ sáng và cân bằng trắng của ảnh. Một điểm là vết bệnh
+    ``HEALTHY_MASK``), nên ngưỡng không phụ thuộc độ sáng và cân bằng trắng của ảnh; lá quá ít mô xanh
+    dùng mốc cố định ``HEALTHY_REF_FALLBACK_LAB``. Một điểm là vết bệnh
     khi a* lệch về phía đỏ/nâu, hoặc lệch vàng đậm (a* và b* cùng tăng), hoặc là mô hoại tử tối có Hue
-    ngoài dải xanh. Bị loại: điểm gần như không màu, bóng đổ tối ít màu trong dải 15 pixel sát mép lá, và
+    ngoài dải xanh. Bị loại: điểm gần như không màu (trừ mô chết tối ở sâu trong lá), bóng đổ tối ít
+    màu trong dải 15 pixel sát mép lá, và
     mọi điểm cách biên ``leaf_mask`` tối đa 5 pixel (bóng đổ sát mép hay lọt vào mask lá). Opening,
     closing và ngưỡng diện tích tối thiểu loại nhiễu nhỏ. ``lesion_mask`` được giao với ``leaf_mask`` để
     mọi pixel đốm đều thuộc diện tích lá.
@@ -200,27 +210,37 @@ def segment_lesions(
         & (value >= HEALTHY_REF_MIN_VALUE)
     )
     healthy_mask = np.where(reference, 255, 0).astype(np.uint8)
-    if np.count_nonzero(reference) < HEALTHY_REF_MIN_PX:
-        reference = in_leaf
-
-    if reference.any():
-        delta_l = lightness - np.median(lightness[reference])
-        delta_a = a_star - np.median(a_star[reference])
-        delta_b = b_star - np.median(b_star[reference])
-        chroma = np.hypot(a_star, b_star)
-        green_hue = (hue >= HEALTHY_HUE_RANGE[0]) & (hue <= HEALTHY_HUE_RANGE[1])
-        discolored = (
-            (delta_a >= LESION_MIN_DELTA_A)
-            | ((delta_a >= LESION_YELLOW_MIN_DELTA_A) & (delta_b >= LESION_YELLOW_MIN_DELTA_B))
-            | (~green_hue & (delta_a >= 0) & (delta_l <= -LESION_DARK_MIN_DELTA_L))
-        )
-        near_edge = cv2.distanceTransform(leaf_mask, cv2.DIST_L2, 5) <= SHADOW_MAX_EDGE_DIST_PX
-        shadow = (chroma < SHADOW_MAX_CHROMA) & (value < SHADOW_MAX_VALUE) & near_edge
-        candidates = (
-            discolored & ~shadow & (chroma >= LESION_MIN_CHROMA) & (value >= LESION_MIN_VALUE)
-        )
+    if np.count_nonzero(reference) >= HEALTHY_REF_MIN_PX:
+        ref_l = np.median(lightness[reference])
+        ref_a = np.median(a_star[reference])
+        ref_b = np.median(b_star[reference])
     else:
-        candidates = np.zeros_like(in_leaf)
+        ref_l, ref_a, ref_b = HEALTHY_REF_FALLBACK_LAB
+
+    delta_l = lightness - ref_l
+    delta_a = a_star - ref_a
+    delta_b = b_star - ref_b
+    chroma = np.hypot(a_star, b_star)
+    green_hue = (hue >= HEALTHY_HUE_RANGE[0]) & (hue <= HEALTHY_HUE_RANGE[1])
+    discolored = (
+        (delta_a >= LESION_MIN_DELTA_A)
+        | ((delta_a >= LESION_YELLOW_MIN_DELTA_A) & (delta_b >= LESION_YELLOW_MIN_DELTA_B))
+        | (~green_hue & (delta_a >= 0) & (delta_l <= -LESION_DARK_MIN_DELTA_L))
+    )
+    edge_dist = cv2.distanceTransform(leaf_mask, cv2.DIST_L2, 5)
+    shadow = (
+        (chroma < SHADOW_MAX_CHROMA) & (value < SHADOW_MAX_VALUE)
+        & (edge_dist <= SHADOW_MAX_EDGE_DIST_PX)
+    )
+    dark_core = (
+        (edge_dist > LESION_DARK_CORE_MIN_EDGE_DIST_PX)
+        & (delta_l <= -LESION_DARK_CORE_MIN_DELTA_L)
+        & (delta_a >= LESION_DARK_CORE_MIN_DELTA_A)
+    )
+    candidates = (
+        in_leaf & discolored & ~shadow
+        & ((chroma >= LESION_MIN_CHROMA) | dark_core) & (value >= LESION_MIN_VALUE)
+    )
 
     edge_kernel_size = LESION_EDGE_MARGIN_PX * 2 + 1
     edge_kernel = cv2.getStructuringElement(
