@@ -99,6 +99,22 @@ class PipelineContractTests(TestCase):
             stages.run()
 
 
+class RngSeedTests(TestCase):
+    def test_seed_is_set_before_segment_leaf(self):
+        stages = FakeStages(square_mask(10, 50), square_mask(20, 30))
+        calls = []
+        segment_leaf = stages.segment_leaf
+
+        def tracked_segment_leaf(image):
+            calls.append('segment_leaf')
+            return segment_leaf(image)
+
+        stages.segment_leaf = tracked_segment_leaf
+        with mock.patch.object(pipeline.cv2, 'setRNGSeed', side_effect=lambda seed: calls.append(('seed', seed))):
+            stages.run()
+        self.assertEqual(calls, [('seed', pipeline.RNG_SEED), 'segment_leaf'])
+
+
 class LoadImageTests(TestCase):
     def test_path_with_vietnamese_name(self):
         with tempfile.TemporaryDirectory() as folder:

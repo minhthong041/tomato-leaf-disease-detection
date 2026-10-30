@@ -26,7 +26,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
 from . import classifier, preprocessing, segmentation
-from .pipeline import load_image
+from .pipeline import RNG_SEED, load_image
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 DATASET_DIR = BACKEND_DIR / "dataset"
@@ -36,9 +36,7 @@ OUTPUT_DIR = BACKEND_DIR / "experiments" / "output"
 VALID_SPLITS = ("train", "test")
 FEATURE_CACHE_VERSION = "3c-v1"
 FEATURE_N_JOBS = -1  # số tiến trình trích đặc trưng song song, -1 là dùng hết CPU
-FEATURE_RNG_SEED = (
-    0  # GrabCut khởi tạo ngẫu nhiên: cố định seed để mỗi ảnh luôn ra cùng một mask
-)
+
 DISEASE_NAMES = {
     "Tomato___Bacterial_spot": "Đốm vi khuẩn",
     "Tomato___Early_blight": "Đốm vòng",
@@ -82,6 +80,7 @@ def feature_signature(paths: list[Path]) -> str:
     """Tạo signature từ mã xử lý ảnh và dữ liệu đầu vào."""
     hasher = hashlib.sha256()
     hasher.update(FEATURE_CACHE_VERSION.encode("utf-8"))
+    hasher.update(str(RNG_SEED).encode("utf-8"))
 
     for source in (
         Path(__file__),
@@ -104,7 +103,7 @@ def _features_for_path(path: Path) -> np.ndarray:
     """Tiền xử lý, tách lá và trích đặc trưng cho một ảnh."""
     # Mỗi tiến trình chỉ dùng 1 luồng OpenCV để các tiến trình không giành CPU của nhau
     cv2.setNumThreads(1)
-    cv2.setRNGSeed(FEATURE_RNG_SEED)
+    cv2.setRNGSeed(RNG_SEED)
     try:
         image = load_image(path)
         processed, _ = preprocessing.preprocess(image)

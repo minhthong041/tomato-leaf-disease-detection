@@ -8,6 +8,7 @@ from unittest.mock import patch
 import numpy as np
 
 from image_processing import train_classifier as training
+from image_processing import pipeline
 
 
 class TestLoadSplit(unittest.TestCase):
@@ -185,7 +186,7 @@ class TestBuildFeatures(unittest.TestCase):
         ):
             with self.assertRaises(RuntimeError):
                 training._features_for_path(Path("dataset/Class_A/a.JPG"))
-        set_seed.assert_called_once_with(training.FEATURE_RNG_SEED)
+        set_seed.assert_called_once_with(pipeline.RNG_SEED)
 
     def test_cache_is_reused_and_invalidated(self):
         with tempfile.TemporaryDirectory() as tmp:
