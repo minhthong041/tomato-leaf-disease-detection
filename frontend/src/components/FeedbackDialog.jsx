@@ -12,14 +12,22 @@ const EMPTY_FORM = { title: '', description: '' };
 const TITLE_MAX_LENGTH = 255; // trùng feedbacks.title
 const DESCRIPTION_MAX_LENGTH = 5000; // trùng REPORT_DESCRIPTION_MAX_LENGTH ở backend
 
-// Nút "Báo kết quả sai" trên trang Kết quả, mở hộp thoại gửi phản hồi cho lần chẩn đoán historyId
-export default function FeedbackDialog({ historyId }) {
-  const [open, setOpen] = useState(false);
+// Nút "Báo kết quả sai" trên trang Kết quả, mở hộp thoại gửi phản hồi cho lần chẩn đoán historyId.
+// open/onOpenChange do trang cha giữ, để khung cảnh báo (ResultWarning) cũng mở được hộp này.
+// suggestedTitle: điền sẵn vào ô Tiêu đề khi mở hộp mà ô đang trống.
+export default function FeedbackDialog({ historyId, open, onOpenChange, suggestedTitle = '' }) {
   const [form, setForm] = useState(EMPTY_FORM);
+  const [wasOpen, setWasOpen] = useState(open);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
+
+  // Vừa mở hộp: điền tiêu đề gợi ý (cập nhật state ngay khi render, không cần useEffect)
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open && !form.title && suggestedTitle) setForm((current) => ({ ...current, title: suggestedTitle }));
+  }
 
   function update(field) {
     return (event) => {
@@ -30,7 +38,7 @@ export default function FeedbackDialog({ historyId }) {
 
   function handleClose() {
     if (submitting) return;
-    setOpen(false);
+    onOpenChange(false);
     setErrors({});
     setError('');
   }
@@ -41,7 +49,7 @@ export default function FeedbackDialog({ historyId }) {
     setSubmitting(true);
     try {
       await createFeedback(historyId, { title: form.title.trim(), description: form.description.trim() });
-      setOpen(false);
+      onOpenChange(false);
       setForm(EMPTY_FORM);
       setSent(true);
     } catch (err) {
@@ -57,7 +65,7 @@ export default function FeedbackDialog({ historyId }) {
 
   return (
     <>
-      <Button variant="outlined" color="warning" startIcon={<ReportProblemIcon />} onClick={() => setOpen(true)}>
+      <Button variant="outlined" color="warning" startIcon={<ReportProblemIcon />} onClick={() => onOpenChange(true)}>
         Báo kết quả sai
       </Button>
 

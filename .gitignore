@@ -1,3 +1,6 @@
 #AI Code Assistant --- IGNORE ---
 CLAUDE.md
 .claude/
+
+# Biến môi trường của docker compose (mẫu: .env.example)
+.env

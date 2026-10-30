@@ -25,18 +25,21 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 |---|---|
 | Database (PostgreSQL) và model Django | Xong |
 | Trang quản trị `/admin/` | Xong |
+| Docker Compose | Xong — `docker compose up` chạy db, backend, frontend; mở http://localhost:8080 |
 | Đăng nhập JWT, CORS cho frontend | Xong |
 | Đăng ký tài khoản, trang điều khoản sử dụng | Xong — `POST /api/auth/register/` (đăng nhập luôn), trang `/register`, `/terms` |
+| Xóa tài khoản | Xong — `POST /api/auth/delete-account/` (nhập lại mật khẩu, ẩn danh hóa, thu hồi token), trang `/account` |
 | Khung pipeline và quy ước vào/ra ([docs/pipeline.md](docs/pipeline.md)) | Xong |
 | Chia dữ liệu train/test | Xong — 80/20 theo từng lớp ([experiments/split_dataset.py](backend/experiments/split_dataset.py), `dataset/splits/*.txt`); tên thư mục lớp phải trùng `diseases.code` |
 | Giai đoạn 1: tiền xử lý (resize, Bilateral, CLAHE) | Xong |
 | Giai đoạn 2–3: tách lá, tách đốm bệnh | Xong bản đầu, ngưỡng đốm bệnh còn tạm thời |
 | Giai đoạn 4: trích đặc trưng GLCM + Color Moments | Xong |
-| Giai đoạn 4: huấn luyện SVM / Random Forest | SVM xong (#18), Random Forest chưa làm |
+| Giai đoạn 4: huấn luyện SVM / Random Forest | SVM xong (#18), đã huấn luyện lại trên `segment_leaf` thật (3C): accuracy 0,850, macro F1 0,809; Random Forest làm ở 3E |
 | Cấp độ 0–4 và khuyến nghị IPM | Xong |
 | Danh sách lớp bệnh (bảng `diseases`) | Xong — đủ 10 lớp lá cà chua của PlantVillage, nạp bằng migration |
 | API tải ảnh, lịch sử, kết quả, đánh dấu | Xong — chạy pipeline ngay trong request, trả `done` hoặc `failed` (ảnh không chẩn đoán được hoặc lỗi hệ thống); lọc đã lưu bằng `?is_bookmarked=true` |
 | Phản hồi kết quả sai, báo lỗi | Xong — `POST /api/feedbacks/`, `POST /api/error-reports/`; nút "Báo kết quả sai" trên trang kết quả, trang `/error-report`; quản trị viên xử lý trong `/admin/` |
+| Cảnh báo kết quả đáng ngờ | Xong — trang kết quả cảnh báo khi độ tin cậy dưới 60% (ngưỡng tạm, chờ đề xuất của 3E) hoặc tên bệnh mâu thuẫn với cấp độ, gợi ý gửi phản hồi |
 | Giao diện frontend | Có khung: đăng nhập, đăng ký, điều khoản, tải ảnh, kết quả (lưu / bỏ lưu), lịch sử (lọc đã lưu), phản hồi, báo lỗi — đã nối API |
 
 ## Công nghệ
@@ -77,7 +80,33 @@ tomato-leaf-disease-detection/
     └── database.md           # giải thích database cho cả nhóm
 ```
 
-## Cài đặt
+## Chạy nhanh bằng Docker
+
+Cần Docker Desktop (Windows, macOS) hoặc Docker Engine + Compose v2 (Linux). Từ thư mục gốc repo:
+
+```powershell
+docker compose up
+```
+
+Lần đầu Docker sẽ build image (vài phút). Xong thì mở **http://localhost:8080**, bấm **Đăng ký** để tạo tài khoản rồi tải ảnh lá lên chẩn đoán.
+
+- 3 dịch vụ: `db` (PostgreSQL), `backend` (Django + gunicorn, tự chạy `migrate` khi khởi động), `frontend` (nginx phục vụ giao diện, chuyển `/api`, `/admin` tới backend). Cấu hình: [docker-compose.yml](docker-compose.yml).
+- Dữ liệu database và ảnh tải lên nằm trong volume `postgres-data`, `media`: tắt rồi bật lại vẫn còn.
+- Biến môi trường đọc từ `.env` ở thư mục gốc (mẫu: [.env.example](.env.example)). Không có `.env` thì dùng giá trị mặc định, **chỉ để chạy thử trên máy**: khi đưa lên server phải đặt `DB_PASSWORD`, `DJANGO_SECRET_KEY` mới.
+- Image backend có sẵn model `classifier.joblib`, không chứa `dataset/`.
+
+```powershell
+docker compose up -d                                           # chạy nền
+docker compose logs -f backend                                 # xem log backend
+docker compose exec backend python manage.py createsuperuser   # tạo tài khoản quản trị (/admin/)
+docker compose up --build                                      # build lại sau khi kéo code mới
+docker compose down                                            # tắt (giữ dữ liệu)
+docker compose down -v                                         # tắt và XÓA database, ảnh tải lên
+```
+
+Hoặc đặt `DJANGO_SUPERUSER_EMAIL`, `DJANGO_SUPERUSER_PASSWORD` trong `.env` để tài khoản quản trị được tạo tự động lúc khởi động.
+
+## Cài đặt để phát triển
 
 ### Yêu cầu
 - Python 3.12
@@ -146,6 +175,7 @@ npm install                       # trong frontend/, khi package.json thay đổ
 | POST | `/api/auth/login/` | `{"email", "password"}` | `{"access", "refresh"}` |
 | POST | `/api/auth/refresh/` | `{"refresh"}` | Cặp token mới (refresh cũ bị vô hiệu) |
 | POST | `/api/auth/logout/` | `{"refresh"}` | Vô hiệu refresh token |
+| POST | `/api/auth/delete-account/` | `{"password"}` | 204; xóa tài khoản của chính mình (ẩn danh hóa, thu hồi mọi refresh token). Sai mật khẩu, hoặc tài khoản quản trị (phải xóa trong `/admin/`), trả 400 |
 | POST | `/api/diagnoses/` | multipart, trường `image` (JPG/PNG, tối đa 10 MB) | Kết quả chẩn đoán, trạng thái `done` hoặc `failed` |
 | GET | `/api/diagnoses/` | | Lịch sử của người đang đăng nhập, mới nhất trước, 20 mục/trang |
 | GET | `/api/diagnoses/:id/` | | Chi tiết một lần chẩn đoán (ảnh từng bước, khuyến nghị IPM) |

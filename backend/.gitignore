@@ -231,3 +231,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+
+# File tĩnh do collectstatic tạo ra
+staticfiles/
