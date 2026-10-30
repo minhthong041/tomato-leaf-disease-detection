@@ -1,5 +1,7 @@
 """Unit tests cho quy trình huấn luyện SVM."""
 
+import inspect
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,8 +9,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from image_processing import train_classifier as training
-from image_processing import pipeline
+from image_processing import pipeline, train_classifier as training
 
 
 class TestLoadSplit(unittest.TestCase):
@@ -186,7 +187,7 @@ class TestBuildFeatures(unittest.TestCase):
         ):
             with self.assertRaises(RuntimeError):
                 training._features_for_path(Path("dataset/Class_A/a.JPG"))
-        set_seed.assert_called_once_with(pipeline.RNG_SEED)
+        set_seed.assert_called_once_with(training.RNG_SEED)
 
     def test_cache_is_reused_and_invalidated(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -269,7 +270,111 @@ class TrainEvaluateTests(unittest.TestCase):
             self.assertIn("per_class_f1", metrics)
             self.assertGreaterEqual(metrics["accuracy"], 0)
             self.assertLessEqual(metrics["accuracy"], 1)
-            self.assertTrue((output_dir / "confusion_matrix.png").is_file())
+            self.assertTrue((output_dir / "confusion_matrix_svm.png").is_file())
+
+    def test_evaluate_baseline_saves_own_confusion_matrix(self):
+        model = training.train(self.X, self.y)
+        with tempfile.TemporaryDirectory() as tmp:
+            training.evaluate(model, self.X, self.y, Path(tmp), name=training.BASELINE_NAME)
+            self.assertTrue((Path(tmp) / "confusion_matrix_svm_3c.png").is_file())
+
+    def test_random_forest_supports_predict_proba(self):
+        model = training.train(self.X, self.y, "random_forest", n_estimators=20)
+        probabilities = model.predict_proba(self.X[:3])
+        self.assertEqual(list(model.classes_), ["Class_A", "Class_B"])
+        np.testing.assert_allclose(probabilities.sum(axis=1), np.ones(3))
+
+    def test_make_model_rejects_unknown_name(self):
+        with self.assertRaises(ValueError):
+            training.make_model("knn")
+
+    def test_tune_returns_params_from_grid(self):
+        grid = {"svc__C": [1, 10]}
+        with patch.object(training, "SEARCH_N_JOBS", 1):
+            params, score = training.tune(self.X, self.y, "svm", grid, cv=2)
+        self.assertIn(params["svc__C"], grid["svc__C"])
+        self.assertGreaterEqual(score, 0)
+        self.assertLessEqual(score, 1)
+
+    def test_predict_time_and_model_size(self):
+        model = training.train(self.X, self.y)
+        self.assertGreater(training.predict_time_ms(model, self.X, samples=5), 0)
+        self.assertGreater(training.model_size_bytes(model), 0)
+
+
+class TestConfidenceThreshold(unittest.TestCase):
+    def test_picks_smallest_threshold_reaching_target(self):
+        confidences = np.array([0.95, 0.9, 0.85, 0.42, 0.38, 0.55])
+        correct = np.array([True, True, True, False, False, False])
+        result = training.suggest_confidence_threshold(
+            confidences, correct, target_recall=0.3, candidates=(0.3, 0.4, 0.5, 0.6)
+        )
+        self.assertEqual(result["threshold"], 0.4)
+        self.assertAlmostEqual(result["wrong_caught"], 1 / 3)
+        result = training.suggest_confidence_threshold(
+            confidences, correct, target_recall=0.6, candidates=(0.3, 0.4, 0.5, 0.6)
+        )
+        self.assertEqual(result["threshold"], 0.5)
+        self.assertAlmostEqual(result["flagged_ratio"], 2 / 6)
+        self.assertAlmostEqual(result["accepted_accuracy"], 3 / 4)
+        self.assertTrue(result["target_reached"])
+
+    def test_warns_when_no_threshold_reaches_target(self):
+        confidences = np.array([0.95, 0.9, 0.85, 0.42, 0.38, 0.55])
+        correct = np.array([True, True, True, False, False, False])
+        with self.assertWarns(UserWarning):
+            result = training.suggest_confidence_threshold(
+                confidences, correct, target_recall=1.0, candidates=(0.3, 0.4)
+            )
+        self.assertEqual(result["threshold"], 0.4)
+        self.assertFalse(result["target_reached"])
+
+    def test_rejects_mismatched_inputs(self):
+        with self.assertRaises(ValueError):
+            training.suggest_confidence_threshold(np.array([0.5]), np.array([True, False]))
+
+
+class TestFeatureSignature(unittest.TestCase):
+    def test_ignores_patched_functions_and_training_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            image_path = Path(tmp) / "Class_A" / "image.JPG"
+            image_path.parent.mkdir()
+            image_path.write_bytes(b"mock image")
+            before = training.feature_signature([image_path])
+            with (
+                patch.object(training, "leaf_mask_for"),
+                patch.object(training, "PARAM_GRIDS", {}),
+            ):
+                after = training.feature_signature([image_path])
+        self.assertEqual(before, after)
+
+    def test_changes_with_leaf_constants(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            image_path = Path(tmp) / "Class_A" / "image.JPG"
+            image_path.parent.mkdir()
+            image_path.write_bytes(b"mock image")
+            before = training.feature_signature([image_path])
+            with patch.object(training.segmentation, "LEAF_GRABCUT_ITERATIONS", 99):
+                after = training.feature_signature([image_path])
+        self.assertNotEqual(before, after)
+
+    def test_covers_all_helpers_of_segment_leaf(self):
+        # Dò mọi hàm của segmentation mà segment_leaf gọi (cả gián tiếp): thiếu hàm nào
+        # trong _FEATURE_FUNCTIONS thì sửa hàm đó sẽ không làm mới cache đặc trưng
+        segmentation = training.segmentation
+        listed = set(training._FEATURE_FUNCTIONS)
+        todo, seen = [segmentation.segment_leaf], set()
+        while todo:
+            function = todo.pop()
+            if function in seen:
+                continue
+            seen.add(function)
+            for name in re.findall(r"\b(_?[a-z][a-z0-9_]*)\(", inspect.getsource(function)):
+                helper = getattr(segmentation, name, None)
+                if inspect.isfunction(helper) and helper.__module__ == segmentation.__name__:
+                    todo.append(helper)
+        missing = sorted(function.__name__ for function in seen - listed)
+        self.assertEqual(missing, [], "Thêm các hàm này vào _FEATURE_FUNCTIONS")
 
 
 if __name__ == "__main__":
