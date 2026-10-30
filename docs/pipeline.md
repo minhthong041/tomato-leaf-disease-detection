@@ -123,6 +123,10 @@ train không có mask (60 lá khỏe, 12 ảnh mỗi lớp bệnh) để tránh 
   giống vùng lá phản sáng: thêm điều kiện "sáng hơn mốc" thì bắt lại được nhện
   đỏ nhưng tỉ lệ lá khỏe ra cấp 0 giảm từ khoảng 45% xuống 17–27%, nên không
   dùng. Nhện đỏ vì vậy bị đánh giá thấp mức độ (thường ra cấp 1).
+- Lá có vết bệnh nhỏ hoặc nhạt màu (một số lá Đốm vi khuẩn, Nhện đỏ, Đốm đích)
+  có thể ra cấp 0 dù classifier nhận đúng bệnh. Khi đó trang Kết quả hiện cảnh
+  báo mâu thuẫn của việc 4G ("… nhưng không phát hiện vết bệnh nào (Cấp 0)"),
+  đây là hành vi đúng thiết kế chứ không phải lỗi.
 
 ### Xem trực quan segmentation
 
