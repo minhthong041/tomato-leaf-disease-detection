@@ -110,13 +110,28 @@ class OverlayTests(TestCase):
         np.testing.assert_array_equal(panel[top + 50, 5], self.base[50, 5])
         dimmed = (self.base[50, 5] * evaluate.OUTSIDE_LEAF_DIM).astype(np.uint8)
         np.testing.assert_array_equal(panel[top + 50, 2 * SIZE + 5], dimmed)
-        np.testing.assert_array_equal(panel[top + 5, 2 * SIZE + 50], self.expected(evaluate.COLOR_MISSED))
+        # Hàng 2 nằm trên nhãn "Mask vet benh" (nền đen của nhãn che từ hàng 5 trở xuống)
+        np.testing.assert_array_equal(panel[top + 2, 2 * SIZE + 50], self.expected(evaluate.COLOR_MISSED))
 
     def test_draw_overlay_empty_lesion_truth(self):
         leaf = rect_mask(0, 0, 40, SIZE)
         row = evaluate.evaluate_image(leaf, EMPTY, leaf, EMPTY)
         panel = evaluate.draw_overlay(self.base, leaf, EMPTY, leaf, EMPTY, '', row)
         self.assertEqual(panel.shape[1], 3 * SIZE)
+
+
+class PredictMasksTests(TestCase):
+    def test_seed_is_set_before_segment_leaf(self):
+        calls = []
+        processed = np.zeros((SIZE, SIZE, 3), np.uint8)
+
+        def segment_leaf(image):
+            calls.append('segment_leaf')
+            return EMPTY, {}
+
+        with mock.patch.object(evaluate.cv2, 'setRNGSeed', side_effect=lambda seed: calls.append(('seed', seed))),                 mock.patch.object(evaluate.preprocessing, 'preprocess', return_value=(processed, {})),                 mock.patch.object(evaluate.segmentation, 'segment_leaf', side_effect=segment_leaf),                 mock.patch.object(evaluate.segmentation, 'segment_lesions', return_value=(EMPTY, {})):
+            evaluate.predict_masks(processed)
+        self.assertEqual(calls, [('seed', evaluate.pipeline.RNG_SEED), 'segment_leaf'])
 
 
 def write_png(path, image):

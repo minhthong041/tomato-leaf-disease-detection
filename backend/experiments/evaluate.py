@@ -139,6 +139,9 @@ def load_ground_truth(list_file: Path = GROUND_TRUTH_FILE, masks_dir: Path = MAS
 
 def predict_masks(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """(leaf_mask, lesion_mask) do pipeline dự đoán, cùng các bước như pipeline.run()."""
+    # Cùng seed GrabCut với pipeline.run(): mask mỗi ảnh khớp kết quả trên web và không phụ thuộc
+    # ảnh nào chạy trước nó trong danh sách
+    cv2.setRNGSeed(pipeline.RNG_SEED)
     processed, _ = preprocessing.preprocess(image)
     leaf_mask, _ = segmentation.segment_leaf(processed)
     lesion_mask, _ = segmentation.segment_lesions(processed, leaf_mask)
@@ -186,7 +189,12 @@ def color_comparison(base: np.ndarray, pred: np.ndarray, truth: np.ndarray) -> n
     return out
 
 
-def _put_text(image: np.ndarray, text: str, origin: tuple[int, int]) -> None:
+def _put_text(image: np.ndarray, text: str, origin: tuple[int, int], background: bool = False) -> None:
+    """Chữ trắng; background=True vẽ thêm nền đen phía sau để đọc được khi chữ nằm trên ảnh sáng."""
+    if background:
+        (width, height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
+        x, y = origin
+        cv2.rectangle(image, (x - 4, y - height - 4), (x + width + 4, y + baseline + 2), (0, 0, 0), cv2.FILLED)
     cv2.putText(image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
 
 
@@ -216,7 +224,7 @@ def draw_overlay(image: np.ndarray, leaf_true: np.ndarray, lesion_true: np.ndarr
                          f'S that {row["s_that"]:.1f}% -> du doan {row["s_du_doan"]:.1f}%  |  '
                          f'Cap {row["cap_that"]} -> {level_pred}', (10, 46))
     for index, label in enumerate(('Anh goc', 'Mask la', 'Mask vet benh')):
-        _put_text(panel, label, (index * width + 10, HEADER_HEIGHT + 22))
+        _put_text(panel, label, (index * width + 10, HEADER_HEIGHT + 22), background=True)
     legend_y = HEADER_HEIGHT + height + 21
     x = 10
     for color, label in ((COLOR_CORRECT, 'dung'), (COLOR_FALSE_ALARM, 'bao nham (thua)'),
