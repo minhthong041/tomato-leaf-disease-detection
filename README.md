@@ -25,6 +25,7 @@ Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 |---|---|
 | Database (PostgreSQL) và model Django | Xong |
 | Trang quản trị `/admin/` | Xong |
+| Docker Compose | Xong — `docker compose up` chạy db, backend, frontend; mở http://localhost:8080 |
 | Đăng nhập JWT, CORS cho frontend | Xong |
 | Đăng ký tài khoản, trang điều khoản sử dụng | Xong — `POST /api/auth/register/` (đăng nhập luôn), trang `/register`, `/terms` |
 | Khung pipeline và quy ước vào/ra ([docs/pipeline.md](docs/pipeline.md)) | Xong |
@@ -77,7 +78,33 @@ tomato-leaf-disease-detection/
     └── database.md           # giải thích database cho cả nhóm
 ```
 
-## Cài đặt
+## Chạy nhanh bằng Docker
+
+Cần Docker Desktop (Windows, macOS) hoặc Docker Engine + Compose v2 (Linux). Từ thư mục gốc repo:
+
+```powershell
+docker compose up
+```
+
+Lần đầu Docker sẽ build image (vài phút). Xong thì mở **http://localhost:8080**, bấm **Đăng ký** để tạo tài khoản rồi tải ảnh lá lên chẩn đoán.
+
+- 3 dịch vụ: `db` (PostgreSQL), `backend` (Django + gunicorn, tự chạy `migrate` khi khởi động), `frontend` (nginx phục vụ giao diện, chuyển `/api`, `/admin` tới backend). Cấu hình: [docker-compose.yml](docker-compose.yml).
+- Dữ liệu database và ảnh tải lên nằm trong volume `postgres-data`, `media`: tắt rồi bật lại vẫn còn.
+- Biến môi trường đọc từ `.env` ở thư mục gốc (mẫu: [.env.example](.env.example)). Không có `.env` thì dùng giá trị mặc định, **chỉ để chạy thử trên máy**: khi đưa lên server phải đặt `DB_PASSWORD`, `DJANGO_SECRET_KEY` mới.
+- Image backend có sẵn model `classifier.joblib`, không chứa `dataset/`.
+
+```powershell
+docker compose up -d                                           # chạy nền
+docker compose logs -f backend                                 # xem log backend
+docker compose exec backend python manage.py createsuperuser   # tạo tài khoản quản trị (/admin/)
+docker compose up --build                                      # build lại sau khi kéo code mới
+docker compose down                                            # tắt (giữ dữ liệu)
+docker compose down -v                                         # tắt và XÓA database, ảnh tải lên
+```
+
+Hoặc đặt `DJANGO_SUPERUSER_EMAIL`, `DJANGO_SUPERUSER_PASSWORD` trong `.env` để tài khoản quản trị được tạo tự động lúc khởi động.
+
+## Cài đặt để phát triển
 
 ### Yêu cầu
 - Python 3.12
