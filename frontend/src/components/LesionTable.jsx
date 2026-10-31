@@ -15,7 +15,6 @@ const decimalFormat = new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 2,
 export default function LesionTable({ lesions, leafArea, highlighted, onHighlight }) {
   const [expanded, setExpanded] = useState(false);
   const rows = lesions.map((lesion, index) => ({ ...lesion, index })).sort((a, b) => b.area - a.area);
-  const shown = expanded ? rows : rows.slice(0, INITIAL_ROWS);
 
   return (
     <Box>
@@ -32,11 +31,15 @@ export default function LesionTable({ lesions, leafArea, highlighted, onHighligh
             </TableRow>
           </TableHead>
           <TableBody>
-            {shown.map((row) => (
+            {/* Dòng sau INITIAL_ROWS chỉ ẩn trên màn hình: bản in luôn có đủ các đốm */}
+            {rows.map((row, position) => (
               <TableRow key={row.index} hover tabIndex={0} selected={highlighted === row.index}
                 onMouseEnter={() => onHighlight(row.index)} onMouseLeave={() => onHighlight(null)}
                 onFocus={() => onHighlight(row.index)} onBlur={() => onHighlight(null)}
-                sx={{ cursor: 'default', '& td': { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }}>
+                sx={{
+                  cursor: 'default', '& td': { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
+                  ...(!expanded && position >= INITIAL_ROWS && { display: 'none', displayPrint: 'table-row' }),
+                }}>
                 <TableCell sx={{ fontWeight: 600 }}>{row.index + 1}</TableCell>
                 <TableCell align="right">{numberFormat.format(row.area)}</TableCell>
                 <TableCell align="right">
