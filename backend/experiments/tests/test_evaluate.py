@@ -1,3 +1,5 @@
+import contextlib
+import io
 import tempfile
 from pathlib import Path
 from unittest import TestCase, mock
@@ -74,11 +76,40 @@ class EvaluateImageTests(TestCase):
         self.assertEqual(row['iou_la'], 0.0)
         self.assertIsNone(row['cap_du_doan'])
 
-    def test_near_threshold(self):
-        self.assertTrue(evaluate.is_near_threshold(14.5))
-        self.assertTrue(evaluate.is_near_threshold(35.9))
-        self.assertFalse(evaluate.is_near_threshold(10.0))
-        self.assertFalse(evaluate.is_near_threshold(0.0))
+    def test_near_threshold_tolerance_grows_with_threshold(self):
+        # Dung sai 10% ngưỡng: 0,5 / 1,5 / 3,5 điểm quanh 5 / 15 / 35%
+        for percent in (4.6, 5.4, 13.6, 16.4, 31.6, 38.4):
+            self.assertTrue(evaluate.is_near_threshold(percent), percent)
+        for percent in (0.0, 4.4, 5.6, 10.0, 13.4, 16.6, 31.4, 38.6, 53.2):
+            self.assertFalse(evaluate.is_near_threshold(percent), percent)
+
+
+def summary_row(cap_that, cap_du_doan, has_lesion=True, loi=''):
+    return {'loi': loi, 'iou_la': 0.9, 'iou_vet_benh': 0.5 if has_lesion else None,
+            'dice_vet_benh': 0.6 if has_lesion else None, 'sai_so_s': 1.0,
+            'cap_that': cap_that, 'cap_du_doan': cap_du_doan, 's_du_doan': 0.0 if cap_du_doan == 0 else 3.0}
+
+
+class SummarizeTests(TestCase):
+    def test_level_counts_only_images_with_lesions(self):
+        rows = [
+            summary_row(2, 2), summary_row(2, 3), summary_row(1, 4), summary_row(3, None),
+            summary_row(0, 0, has_lesion=False), summary_row(0, 2, has_lesion=False),
+            summary_row(2, 2, loi='Không tìm thấy lá'),
+        ]
+        s = evaluate.summarize(rows)
+        self.assertEqual(s['so_anh'], 6)
+        self.assertEqual((s['dung_cap'], s['lech_toi_da_1_cap'], s['so_anh_co_vet_benh']), (1, 2, 4))
+        self.assertEqual((s['bao_nham'], s['so_anh_trong']), (1, 2))
+
+    def test_print_summary_shows_counts(self):
+        rows = [dict(summary_row(2, 2), lop='Early_blight'), dict(summary_row(0, 1, False), lop='healthy')]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            evaluate.print_summary(rows)
+        text = out.getvalue()
+        self.assertIn('| healthy | 1 | 0.900 | – | – | 1.00 | – | – | 1/1 |', text)
+        self.assertIn('| **Tổng** | 2 | 0.900 | 0.500 | 0.600 | 1.00 | 1/1 | 1/1 | 1/1 |', text)
 
 
 class OverlayTests(TestCase):

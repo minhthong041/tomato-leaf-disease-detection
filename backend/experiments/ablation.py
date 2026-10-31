@@ -115,16 +115,17 @@ def write_csv(results: dict[str, list[dict]], out_file: Path) -> None:
 
 def print_summary(results: dict[str, list[dict]]) -> None:
     """Bảng tổng mỗi cấu hình một dòng, rồi bảng sai số S theo lớp mỗi cấu hình một cột."""
-    print('| Cấu hình | IoU lá | IoU vết bệnh | Dice vết bệnh | Sai số S (điểm %) | Đúng cấp | Lệch ≤ 1 cấp '
-          '| Báo nhầm (ảnh không vết bệnh) |')
+    print('| Cấu hình | IoU lá | IoU vết bệnh | Dice vết bệnh | Sai số S (điểm %) | Đúng cấp (ảnh có vết bệnh) '
+          '| Lệch ≤ 1 cấp (ảnh có vết bệnh) | Báo nhầm (ảnh mask trống) |')
     print('|---|---:|---:|---:|---:|---:|---:|---:|')
     for name, rows in results.items():
         s = evaluate.summarize(rows)
-        false_alarm = f'{s["bao_nham"]}/{s["so_anh_trong"]}' if s['so_anh_trong'] else '–'
         mae = '–' if s['mae_s'] is None else f'{s["mae_s"]:.2f}'
         print(f'| {name} | {evaluate.fmt(s["iou_la"])} | {evaluate.fmt(s["iou_vet_benh"])} '
-              f'| {evaluate.fmt(s["dice_vet_benh"])} | {mae} | {evaluate.fmt(s["dung_cap"], True)} '
-              f'| {evaluate.fmt(s["lech_toi_da_1_cap"], True)} | {false_alarm} |')
+              f'| {evaluate.fmt(s["dice_vet_benh"])} | {mae} '
+              f'| {evaluate.fraction(s["dung_cap"], s["so_anh_co_vet_benh"])} '
+              f'| {evaluate.fraction(s["lech_toi_da_1_cap"], s["so_anh_co_vet_benh"])} '
+              f'| {evaluate.fraction(s["bao_nham"], s["so_anh_trong"])} |')
 
     print('\nSai số S theo lớp (điểm %):\n')
     names = list(results)
