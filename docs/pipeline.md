@@ -178,6 +178,10 @@ python manage.py test api image_processing experiments
 python experiments/evaluate.py
 # Thêm hình so sánh từng ảnh (xanh lá: đúng, đỏ: báo nhầm, xanh dương: bỏ sót) vào experiments/output/evaluate/
 python experiments/evaluate.py --overlay
+# Ablation tiền xử lý: đo lại như trên khi bỏ CLAHE, thay Bilateral bằng Median, bỏ lọc nhiễu
+python experiments/ablation.py
+# Ablation phần phân loại: trích lại đặc trưng train/test và huấn luyện lại SVM cho từng cấu hình (khoảng 8 giờ)
+python experiments/ablation.py --classify
 ```
 
 Ảnh có tên tiếng Việt vẫn đọc được: dùng `pipeline.load_image()` thay cho `cv2.imread()` (hàm này trả `None` với đường dẫn có dấu trên Windows).
