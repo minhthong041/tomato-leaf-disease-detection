@@ -77,6 +77,11 @@ Số liệu dưới đây lấy từ `python experiments/evaluate.py` chạy tr�
 `62cbe6b`, với 30 ảnh mask chuẩn của việc 1D. Cột “Trước 2C” giữ số liệu baseline đã ghi nhận
 trước khi chốt thuật toán LAB; cột main phản ánh mã segmentation hiện tại.
 
+Ba dòng cuối đếm theo cách của PR #35: đúng cấp và lệch ≤ 1 cấp chỉ tính trên 21 ảnh có vết bệnh
+chuẩn, 9 ảnh mask trống chỉ tính ở dòng báo nhầm (với các ảnh này, đúng cấp tương đương không báo
+nhầm nên trước đây bị tính trùng). Cột “Trước 2C” của ba dòng này lấy từ `evaluate.csv` khi chạy lại
+`evaluate.py` trên commit `bf12b64` (ngay trước 2C).
+
 | Chỉ số `evaluate.py` | Trước 2C | Main `62cbe6b` |
 |---|---:|---:|
 | Số ảnh chuẩn | 30 | 30 |
@@ -84,9 +89,9 @@ trước khi chốt thuật toán LAB; cột main phản ánh mã segmentation h
 | IoU vết bệnh | 0.191 | 0.216 |
 | Dice vết bệnh | 0.286 | 0.320 |
 | Sai số S tuyệt đối trung bình (điểm %) | 7.49 | 6.54 |
-| Đúng cấp | 53.3% | 50.0% |
-| Lệch ≤ 1 cấp | 83.3% | 90.0% |
-| Báo nhầm trên ảnh có mask bệnh rỗng | 8/9 | 6/9 |
+| Đúng cấp (ảnh có vết bệnh) | 15/21 | 12/21 |
+| Lệch ≤ 1 cấp (ảnh có vết bệnh) | 19/21 | 19/21 |
+| Báo nhầm (ảnh mask trống) | 8/9 | 6/9 |
 
 | Lớp | IoU vết bệnh trước 2C → main | Sai số S trước 2C → main (điểm %) | Báo nhầm trước 2C → main |
 |---|---:|---:|---:|
@@ -96,9 +101,11 @@ trước khi chốt thuật toán LAB; cột main phản ánh mã segmentation h
 | Khảm (virus) | — | — | 2/3 → 1/3 |
 | Lá khỏe | — | — | 3/3 → 2/3 |
 
-IoU/Dice vết bệnh và sai số S trung bình toàn bộ được cải thiện; tỷ lệ đúng
-cấp giảm từ 53.3% xuống 50.0%, nhưng tỷ lệ lệch không quá 1 cấp tăng từ 83.3%
-lên 90.0%, tức các ảnh sai cấp nằm gần cấp đúng hơn. Kết quả theo lớp không đồng nhất: Early blight
+IoU/Dice vết bệnh và sai số S trung bình toàn bộ được cải thiện, số ảnh mask trống bị
+báo nhầm giảm từ 8/9 xuống 6/9. Trên 21 ảnh có vết bệnh, số ảnh đúng cấp lại giảm từ
+15 xuống 12, còn số ảnh lệch không quá 1 cấp giữ nguyên 19/21. Mức tăng “lệch ≤ 1 cấp”
+từ 83.3% lên 90.0% theo cách tính cũ đến hoàn toàn từ ảnh mask trống (lệch ≤ 1 cấp tăng
+từ 6/9 lên 8/9), không phải do ảnh có vết bệnh được xếp gần cấp đúng hơn. Kết quả theo lớp không đồng nhất: Early blight
 có IoU giảm và sai số S tăng, trong khi Target Spot cải thiện cả IoU và sai số
 S. Một ảnh Early blight (`RS_Erly.B 7617`) có 24.376/31.944 pixel mask bệnh
 nằm ngoài `leaf_mask` dự đoán. Giai đoạn 3 không thể khôi phục các pixel này

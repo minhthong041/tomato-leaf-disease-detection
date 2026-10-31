@@ -28,8 +28,13 @@ Cách tính
 - Ảnh có mask vết bệnh chuẩn trống thì IoU/Dice vết bệnh không có ý nghĩa (chỉ cần pipeline thấy 1 điểm
   là ra 0): để trống hai cột này và không tính vào trung bình. Với các ảnh đó, S dự đoán > 0 nghĩa là
   pipeline nhận nhầm vết bệnh.
-- Ảnh có S thật cách ngưỡng cấp (5%, 15%, 35%) dưới NEAR_THRESHOLD_PP điểm % được đánh dấu sat_nguong:
-  lệch cấp ở các ảnh này chủ yếu do sai số tô tay chứ chưa chắc do pipeline.
+- Đúng cấp và lệch ≤ 1 cấp chỉ tính trên ảnh có vết bệnh chuẩn. Với ảnh mask trống, đúng cấp (Cấp 0)
+  tương đương không báo nhầm, nên các ảnh này chỉ được đếm ở cột báo nhầm, không tính trùng.
+- Ảnh có S thật cách một ngưỡng cấp (5%, 15%, 35%) dưới NEAR_THRESHOLD_RATIO lần ngưỡng đó (dưới 0,5 / 1,5 /
+  3,5 điểm %) được đánh dấu sat_nguong: lệch cấp ở các ảnh này chủ yếu do sai số tô tay chứ chưa chắc do
+  pipeline. Dung sai tỉ lệ với ngưỡng vì sai số tô tay tăng theo diện tích vết bệnh. Với bộ mask hiện tại
+  quy tắc này đánh dấu đúng 4 ảnh ghi trong GHI_CHU.txt (#5, #10, #16, #18); mọi tỉ lệ từ 7% đến 12% đều
+  cho cùng 4 ảnh, nên kết quả không phụ thuộc việc chọn đúng 10%.
 """
 import argparse
 import csv
@@ -57,7 +62,7 @@ OVERLAY_DIR = BACKEND_DIR / 'experiments' / 'output' / 'evaluate'
 
 # Ngưỡng S% giữa các cấp, khớp severity.severity_level()
 SEVERITY_THRESHOLDS = (5, 15, 35)
-NEAR_THRESHOLD_PP = 1.0
+NEAR_THRESHOLD_RATIO = 0.1
 CLASS_PREFIX = 'Tomato___'
 
 # Màu BGR của hình so sánh: đúng (có ở cả dự đoán và mask chuẩn), báo nhầm (chỉ có ở dự đoán),
@@ -159,7 +164,7 @@ def infected_percent(lesion_mask: np.ndarray, leaf_mask: np.ndarray) -> float:
 
 
 def is_near_threshold(percent: float) -> bool:
-    return any(abs(percent - threshold) < NEAR_THRESHOLD_PP for threshold in SEVERITY_THRESHOLDS)
+    return any(abs(percent - threshold) < NEAR_THRESHOLD_RATIO * threshold for threshold in SEVERITY_THRESHOLDS)
 
 
 def evaluate_image(leaf_true: np.ndarray, lesion_true: np.ndarray,
@@ -171,6 +176,7 @@ def evaluate_image(leaf_true: np.ndarray, lesion_true: np.ndarray,
     has_lesion = cv2.countNonZero(lesion_true) > 0
     return {
         'iou_la': iou(leaf_pred, leaf_true),
+        'co_vet_benh': has_lesion,
         'iou_vet_benh': iou(lesion_pred, lesion_true) if has_lesion else None,
         'dice_vet_benh': dice(lesion_pred, lesion_true) if has_lesion else None,
         's_that': s_true,
@@ -223,7 +229,7 @@ def draw_overlay(image: np.ndarray, leaf_true: np.ndarray, lesion_true: np.ndarr
     # Font Hershey của cv2.putText chỉ vẽ được ký tự ASCII nên chữ trên hình viết không dấu
     _put_text(panel, title, (10, 22))
     if row:
-        lesion = 'khong co vet benh chuan' if row['iou_vet_benh'] is None else f'IoU {row["iou_vet_benh"]:.2f}'
+        lesion = f'IoU {row["iou_vet_benh"]:.2f}' if row['co_vet_benh'] else 'khong co vet benh chuan'
         level_pred = '-' if row['cap_du_doan'] is None else row['cap_du_doan']
         _put_text(panel, f'La: IoU {row["iou_la"]:.2f}  |  Vet benh: {lesion}  |  '
                          f'S that {row["s_that"]:.1f}% -> du doan {row["s_du_doan"]:.1f}%  |  '
@@ -282,20 +288,26 @@ def _mean(values) -> float | None:
 
 
 def summarize(rows: list[dict]) -> dict:
-    """Trung bình của một nhóm dòng; bỏ qua dòng lỗi."""
+    """Trung bình của một nhóm dòng; bỏ qua dòng lỗi.
+
+    dung_cap và lech_toi_da_1_cap là số ảnh, đếm trên so_anh_co_vet_benh ảnh có vết bệnh chuẩn; ảnh mask
+    trống chỉ đếm ở bao_nham (trên so_anh_trong ảnh).
+    """
     ok = [row for row in rows if not row['loi']]
-    empty = [row for row in ok if row['iou_vet_benh'] is None]
+    empty = [row for row in ok if not row['co_vet_benh']]
+    with_lesion = [row for row in ok if row['co_vet_benh']]
     return {
         'so_anh': len(ok),
         'iou_la': _mean(row['iou_la'] for row in ok),
         'iou_vet_benh': _mean(row['iou_vet_benh'] for row in ok),
         'dice_vet_benh': _mean(row['dice_vet_benh'] for row in ok),
         'mae_s': _mean(abs(row['sai_so_s']) for row in ok),
-        'dung_cap': _mean(float(row['cap_that'] == row['cap_du_doan']) for row in ok),
-        'lech_toi_da_1_cap': _mean(
-            float(row['cap_du_doan'] is not None and abs(row['cap_that'] - row['cap_du_doan']) <= 1)
-            for row in ok
+        'dung_cap': sum(row['cap_that'] == row['cap_du_doan'] for row in with_lesion),
+        'lech_toi_da_1_cap': sum(
+            row['cap_du_doan'] is not None and abs(row['cap_that'] - row['cap_du_doan']) <= 1
+            for row in with_lesion
         ),
+        'so_anh_co_vet_benh': len(with_lesion),
         # Ảnh không có vết bệnh chuẩn mà pipeline vẫn thấy vết bệnh
         'bao_nham': sum(row['s_du_doan'] > 0 for row in empty),
         'so_anh_trong': len(empty),
@@ -322,6 +334,11 @@ def format_cell(value) -> str:
     return str(value)
 
 
+def fraction(count: int, total: int) -> str:
+    """'đếm/tổng', hoặc '–' khi nhóm không có ảnh nào."""
+    return f'{count}/{total}' if total else '–'
+
+
 def fmt(value, percent=False) -> str:
     if value is None:
         return '–'
@@ -330,19 +347,19 @@ def fmt(value, percent=False) -> str:
 
 def print_summary(rows: list[dict]) -> None:
     """Bảng Markdown trung bình theo lớp và dòng tổng, để dán vào mô tả PR hoặc báo cáo."""
-    print('| Lớp | Số ảnh | IoU lá | IoU vết bệnh | Dice vết bệnh | Sai số S (điểm %) | Đúng cấp '
-          '| Lệch ≤ 1 cấp | Báo nhầm (ảnh không vết bệnh) |')
+    print('| Lớp | Số ảnh | IoU lá | IoU vết bệnh | Dice vết bệnh | Sai số S (điểm %) '
+          '| Đúng cấp (ảnh có vết bệnh) | Lệch ≤ 1 cấp (ảnh có vết bệnh) | Báo nhầm (ảnh mask trống) |')
     print('|---|---:|---:|---:|---:|---:|---:|---:|---:|')
     groups = {}
     for row in rows:
         groups.setdefault(row['lop'], []).append(row)
     for name, group in [*sorted(groups.items()), ('**Tổng**', rows)]:
         s = summarize(group)
-        false_alarm = f'{s["bao_nham"]}/{s["so_anh_trong"]}' if s['so_anh_trong'] else '–'
         mae = '–' if s['mae_s'] is None else f'{s["mae_s"]:.2f}'
         print(f'| {name} | {s["so_anh"]} | {fmt(s["iou_la"])} | {fmt(s["iou_vet_benh"])} '
-              f'| {fmt(s["dice_vet_benh"])} | {mae} | {fmt(s["dung_cap"], True)} '
-              f'| {fmt(s["lech_toi_da_1_cap"], True)} | {false_alarm} |')
+              f'| {fmt(s["dice_vet_benh"])} | {mae} | {fraction(s["dung_cap"], s["so_anh_co_vet_benh"])} '
+              f'| {fraction(s["lech_toi_da_1_cap"], s["so_anh_co_vet_benh"])} '
+              f'| {fraction(s["bao_nham"], s["so_anh_trong"])} |')
     errors = sum(bool(row['loi']) for row in rows)
     if errors:
         print(f'\n{errors} ảnh bị bỏ qua, xem cột loi trong file CSV.')
