@@ -1,86 +1,118 @@
 # Hệ thống phát hiện, phân loại và đo lường mức độ nghiêm trọng của bệnh trên lá cà chua dựa trên xử lý ảnh số
 
-Đồ án môn **Xử lý ảnh số**: người dùng tải lên ảnh **một chiếc lá cà chua**, hệ thống tách lá khỏi nền, tìm các vết bệnh, tính **tỷ lệ diện tích lá bị bệnh**, xếp **cấp độ 0–4** kèm khuyến nghị xử lý theo IPM (quản lý dịch hại tổng hợp), và nhận diện **tên bệnh**. Giao diện web hiển thị ảnh qua từng bước xử lý.
+Đồ án môn **Xử lý ảnh** (Học viện Công nghệ Bưu chính Viễn thông, giảng viên hướng dẫn: Đỗ Đức Hào). Người dùng tải lên ảnh **một chiếc lá cà chua**; hệ thống tách lá khỏi nền, tìm các vết bệnh, tính **tỷ lệ diện tích lá bị bệnh S**, xếp **cấp độ 0–4** kèm khuyến nghị xử lý theo IPM (quản lý dịch hại tổng hợp) và nhận diện **tên bệnh** trong 10 lớp lá cà chua của PlantVillage. Giao diện web hiển thị ảnh qua từng bước xử lý.
 
 Phạm vi chính thức: [docs/TongQuanDuAn.md](docs/TongQuanDuAn.md).
 
-## Mục tiêu
+## Nhóm thực hiện
+
+| Thành viên | Phụ trách |
+|---|---|
+| Cao Minh Thông (trưởng nhóm) | Dữ liệu, tiền xử lý, đánh giá và thí nghiệm, tinh chỉnh tách vết bệnh, giao diện web, báo cáo |
+| Nguyễn Quốc Dương | Tách lá, tách vết bệnh và hình thái học |
+| Đỗ Thị Thanh Thủy | Trích đặc trưng và phân loại, khuyến nghị theo bệnh |
+| Hồ A Nhật Lưu | Backend API, frontend, Docker, demo |
+
+## Pipeline xử lý ảnh
 
 | Giai đoạn | Cách làm | Kết quả |
 |---|---|---|
-| 1. Tiền xử lý | Resize 512×512, khử nhiễu Bilateral / Median, CLAHE trên kênh L của CIELAB | Ảnh chuẩn hóa |
-| 2. Tách lá khỏi nền | HSV, ngưỡng Hue/Saturation, closing 5×5 một lần, tô contour ngoài lớn nhất | Mask lá, diện tích lá |
-| 3. Tách đốm bệnh | Mô khỏe theo Hue (35–85), lọc đốm theo Saturation/Value, hình thái học và diện tích pixel | Mask vết bệnh, diện tích và thông số từng đốm |
-| 4. Phân loại tên bệnh | Đặc trưng GLCM + Color Moments, SVM / Random Forest (PlantVillage, lá cà chua) | Tên bệnh, độ tin cậy |
-| 5. Mức độ nghiêm trọng | S = diện tích bệnh / diện tích lá × 100% | Cấp 0–4, khuyến nghị IPM |
+| 1. Tiền xử lý | Resize 512×512 (`INTER_AREA` khi thu nhỏ, `INTER_CUBIC` khi phóng to), lọc song phương (d = 9, σ = 75), CLAHE (clip 2,0, lưới 8×8) trên kênh L* của CIELAB | Ảnh chuẩn hóa |
+| 2. Tách lá khỏi nền | Hạt giống màu xanh trong HSV, GrabCut 5 vòng, khôi phục mép lá hoại tử, closing 5×5, tô contour ngoài lớn nhất | Mặt nạ lá, diện tích lá |
+| 3. Tách vết bệnh | So màu CIELAB với mô xanh khỏe của chính chiếc lá, loại bóng đổ sát mép, opening rồi closing 5×5, bỏ thành phần nhỏ hơn 40 điểm ảnh | Mặt nạ vết bệnh, số đo từng đốm (diện tích, chu vi, độ tròn, tâm, khung bao) |
+| 4. Phân loại tên bệnh | 14 đặc trưng trên vùng lá: 5 đặc trưng GLCM + 9 mô men màu HSV; SVM nhân RBF (C = 1000, γ = 0,03) | Tên bệnh, độ tin cậy |
+| 5. Mức độ nghiêm trọng | S = A<sub>lesion</sub> / A<sub>leaf</sub> × 100% | Cấp 0–4, khuyến nghị IPM và khuyến nghị theo từng bệnh |
 
 ```
-Ảnh lá ─► Tiền xử lý ─► Tách lá ─► Tách đốm bệnh ─► Contours ─► S (%) ─► Cấp 0–4 + khuyến nghị
-                                 └──────────────► Đặc trưng ─► SVM / RF ─► Tên bệnh
+Ảnh lá ─► Tiền xử lý ─► Tách lá ─► Tách vết bệnh ─► Contours ─► S (%) ─► Cấp 0–4 + khuyến nghị
+                           └── ảnh + mặt nạ lá ─► Đặc trưng ─► SVM ─► Tên bệnh + độ tin cậy
 ```
 
-## Trạng thái
+| Cấp | 0 | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|---|
+| S | 0% | 0% < S < 5% | 5% ≤ S < 15% | 15% ≤ S ≤ 35% | S > 35% |
+| Mức độ | Khỏe mạnh | Nhiễm nhẹ | Trung bình (ngưỡng hành động IPM) | Nặng | Nguy kịch |
 
-| Phần | Trạng thái |
+Quy ước vào/ra giữa các module: [docs/pipeline.md](docs/pipeline.md).
+
+## Kết quả chính
+
+**Dữ liệu:** 10 lớp lá cà chua PlantVillage, 18.160 ảnh, chia 80/20 theo từng lớp (14.528 ảnh huấn luyện, 3.632 ảnh kiểm thử); 30 ảnh (3 ảnh mỗi lớp) có mặt nạ lá và mặt nạ vết bệnh tô tay để đánh giá phân đoạn.
+
+| Phân đoạn và xếp cấp (30 ảnh mặt nạ chuẩn) | Kết quả |
 |---|---|
-| Database (PostgreSQL) và model Django | Xong |
-| Trang quản trị `/admin/` | Xong |
-| Docker Compose | Xong — `docker compose up` chạy db, backend, frontend; mở http://localhost:8080 |
-| Đăng nhập JWT, CORS cho frontend | Xong |
-| Đăng ký tài khoản, trang điều khoản sử dụng | Xong — `POST /api/auth/register/` (đăng nhập luôn), trang `/register`, `/terms` |
-| Xóa tài khoản | Xong — `POST /api/auth/delete-account/` (nhập lại mật khẩu, ẩn danh hóa, thu hồi token), trang `/account` |
-| Khung pipeline và quy ước vào/ra ([docs/pipeline.md](docs/pipeline.md)) | Xong |
-| Chia dữ liệu train/test | Xong — 80/20 theo từng lớp ([experiments/split_dataset.py](backend/experiments/split_dataset.py), `dataset/splits/*.txt`); tên thư mục lớp phải trùng `diseases.code` |
-| Giai đoạn 1: tiền xử lý (resize, Bilateral, CLAHE) | Xong |
-| Ablation tiền xử lý (1G) | Xong — `experiments/ablation.py` (`--classify` cho phần phân loại): bỏ CLAHE, thay Bilateral bằng Median, bỏ lọc nhiễu đều không làm phân loại khác có ý nghĩa thống kê (McNemar trên 3 632 ảnh test, gần nhất là bỏ CLAHE p = 0,080); phân đoạn chênh không đáng kể (IoU ≤ 0,006 trên 30 ảnh); giữ Bilateral + CLAHE |
-| Giai đoạn 2–3: tách lá, tách đốm bệnh | Xong — ngưỡng chốt ở 2C; chương và hình minh họa ở `docs/GiaiDoan2_3.md` (2D) |
-| Giai đoạn 4: trích đặc trưng GLCM + Color Moments | Xong |
-| Giai đoạn 4: huấn luyện SVM / Random Forest | Xong (3E) — so sánh trên cùng đặc trưng của 3C, chọn SVM (C=1000, gamma=0,03): accuracy 0,893, macro F1 0,859; Random Forest: 0,843 / 0,798 |
-| Cấp độ 0–4 và khuyến nghị IPM | Xong |
-| Khuyến nghị theo từng bệnh | Xong — nội dung 3D trong `backend/api/recommendations.py` (khóa theo `diseases.code`), API trả `disease_recommendation`; trang kết quả hiện cả khuyến nghị theo cấp và theo bệnh (bệnh virus, nhện đỏ, lá khỏe chỉ hiện theo bệnh, trừ khi độ tin cậy dưới ngưỡng cảnh báo hoặc lá khỏe mà Cấp ≥ 1 thì hiện cả hai) |
-| Danh sách lớp bệnh (bảng `diseases`) | Xong — đủ 10 lớp lá cà chua của PlantVillage, nạp bằng migration |
-| API tải ảnh, lịch sử, kết quả, đánh dấu | Xong — chạy pipeline ngay trong request, trả `done` hoặc `failed` (ảnh không chẩn đoán được hoặc lỗi hệ thống); lọc đã lưu bằng `?is_bookmarked=true` |
-| Phản hồi kết quả sai, báo lỗi | Xong — `POST /api/feedbacks/`, `POST /api/error-reports/`; nút "Báo kết quả sai" trên trang kết quả, trang `/error-report`; quản trị viên xử lý trong `/admin/` |
-| Cảnh báo kết quả đáng ngờ | Xong — trang kết quả cảnh báo khi độ tin cậy dưới 0,55 (ngưỡng theo 3E) hoặc tên bệnh mâu thuẫn với cấp độ, gợi ý gửi phản hồi |
-| Giao diện frontend | Có khung: đăng nhập, đăng ký, điều khoản, tải ảnh, kết quả (lưu / bỏ lưu), lịch sử (lọc đã lưu), phản hồi, báo lỗi — đã nối API |
-| Demo và chương Web | Xong — kịch bản [docs/demo.md](docs/demo.md), bộ ảnh mẫu chọn bằng `experiments/pick_demo_images.py`, chương Web [docs/chuong-web.md](docs/chuong-web.md) |
+| IoU mặt nạ lá | 0,892 |
+| IoU / Dice mặt nạ vết bệnh | 0,216 / 0,320 |
+| Sai số tuyệt đối trung bình của S | 6,54 điểm % |
+| Đúng cấp (21 ảnh có vết bệnh) | 12/21 |
+| Lệch không quá 1 cấp (21 ảnh có vết bệnh) | 19/21 |
+| Báo nhầm vết bệnh (9 ảnh không có vết bệnh) | 6/9 |
+
+| Phân loại (3.632 ảnh kiểm thử) | Accuracy | Macro F1 |
+|---|---|---|
+| SVM (C = 1000, γ = 0,03), mô hình được chọn | 0,893 | 0,859 |
+| Random Forest | 0,843 | 0,798 |
+
+- **Ngưỡng độ tin cậy 0,55:** cảnh báo 12,2% số ảnh, bắt được 55,7% số dự đoán sai; accuracy trên các ảnh không bị cảnh báo là 94,6%.
+- **Thí nghiệm loại bỏ tiền xử lý:** bỏ CLAHE, thay Bilateral bằng Median hay bỏ lọc nhiễu đều không làm phân loại khác có ý nghĩa thống kê (kiểm định McNemar, gần nhất là bỏ CLAHE với p = 0,080); IoU vết bệnh chỉ dao động 0,213–0,217. Hệ thống giữ Bilateral + CLAHE.
+- **Thời gian:** khoảng 1–3 giây cho một ảnh, trong đó GrabCut chiếm khoảng 93%.
+- **Giới hạn:** chỉ dùng cho ảnh một lá trên nền đơn sắc; ảnh chụp ngoài đồng ruộng có nhiều lá chồng nhau cho kết quả sai.
+
+Chi tiết: [docs/GiaiDoan2_3.md](docs/GiaiDoan2_3.md) (tách lá, tách vết bệnh), [docs/chuong-web.md](docs/chuong-web.md) (ứng dụng web).
+
+## Ứng dụng web
+
+- **Đăng ký, đăng nhập** (JWT, đồng ý điều khoản sử dụng), **xóa tài khoản** (ẩn danh hóa, giữ lịch sử chẩn đoán).
+- **Tải ảnh** JPG/PNG tối đa 10 MB: hướng dẫn chụp, nút chụp ảnh trên điện thoại, cảnh báo ảnh quá nhỏ hoặc quá dài.
+- **Trang kết quả:** tên bệnh, độ tin cậy, tỷ lệ S, số đốm, thanh đo 5 cấp; cảnh báo khi độ tin cậy dưới 0,55 hoặc tên bệnh mâu thuẫn với cấp độ; so sánh ảnh trước/sau; lớp phủ mặt nạ lá, mặt nạ vết bệnh và khung từng đốm; bảng số đo từng đốm; 9 ảnh trung gian; histogram độ sáng trước và sau CLAHE; khuyến nghị theo cấp và theo từng bệnh; in hoặc lưu PDF.
+- **Lịch sử** chẩn đoán, lưu kết quả và lọc "Đã lưu", **báo kết quả sai**, **báo lỗi** ứng dụng.
+- **Trang quản trị** `/admin/`: quản lý người dùng, lịch sử, duyệt phản hồi và báo lỗi.
+
+Kịch bản demo: [docs/demo.md](docs/demo.md).
 
 ## Công nghệ
 
-- **Backend:** Python 3.12, Django 6.1, Django REST Framework, SimpleJWT, PostgreSQL (psycopg 3)
-- **Xử lý ảnh và phân loại:** OpenCV, NumPy, scikit-image, scikit-learn, SciPy, Matplotlib
+- **Xử lý ảnh và phân loại:** Python 3.12, OpenCV, NumPy, scikit-image, scikit-learn, SciPy, Matplotlib
+- **Backend:** Django 6.1, Django REST Framework, SimpleJWT, PostgreSQL (psycopg 3; Docker dùng PostgreSQL 17)
 - **Frontend:** React 19, Vite 8, MUI 9 (Material UI), React Router 7
+- **Triển khai và kiểm thử:** Docker Compose, nginx, gunicorn; 259 kiểm thử tự động, GitHub Actions chạy kiểm thử, lint và build cho mỗi pull request
 
 ## Cấu trúc thư mục
 
 ```
 tomato-leaf-disease-detection/
 ├── backend/
-│   ├── core/                 # settings, urls của Django
-│   ├── api/                  # model, admin, API, lưu ảnh (images.py)
-│   ├── image_processing/     # pipeline xử lý ảnh, xem docs/pipeline.md
-│   │   ├── preprocessing.py  #   giai đoạn 1 — Thành viên 1
-│   │   ├── segmentation.py   #   giai đoạn 2, 3 — Thành viên 2
-│   │   ├── classifier.py     #   giai đoạn 4 — Thành viên 3
-│   │   ├── severity.py       #   giai đoạn 5: cấp độ, khuyến nghị IPM
-│   │   ├── pipeline.py       #   ghép các giai đoạn, chạy thử một ảnh
-│   │   └── models/           #   file model phân loại (.joblib)
-│   ├── dataset/              # ảnh PlantVillage, mask tô tay, ảnh tự chụp — không đưa lên git (trừ splits/*.txt)
-│   ├── experiments/          # script thí nghiệm, đánh giá, xem segmentation; output/ không đưa lên git
-│   ├── media/                # ảnh tải lên (uploads/), ảnh kết quả (results/), ảnh từng bước (steps/) — không đưa lên git
+│   ├── core/                    # settings, urls của Django
+│   ├── api/                     # model, admin, API, lưu ảnh (images.py), khuyến nghị theo bệnh (recommendations.py)
+│   ├── image_processing/        # pipeline xử lý ảnh, không phụ thuộc Django (xem docs/pipeline.md)
+│   │   ├── preprocessing.py     #   giai đoạn 1: resize, Bilateral, CLAHE
+│   │   ├── segmentation.py      #   giai đoạn 2, 3: tách lá, tách vết bệnh, đo và vẽ đốm
+│   │   ├── classifier.py        #   giai đoạn 4: đặc trưng GLCM + mô men màu, dự đoán
+│   │   ├── train_classifier.py  #   huấn luyện, so sánh SVM với Random Forest
+│   │   ├── severity.py          #   giai đoạn 5: cấp độ, khuyến nghị IPM
+│   │   ├── pipeline.py          #   ghép các giai đoạn, chạy thử một ảnh
+│   │   └── models/              #   mô hình đã huấn luyện (classifier.joblib)
+│   ├── experiments/             # chia dữ liệu, đánh giá, thí nghiệm loại bỏ, vẽ hình; output/ không đưa lên git
+│   ├── dataset/                 # ảnh PlantVillage, mặt nạ tô tay — không đưa lên git (trừ splits/*.txt)
+│   ├── media/                   # ảnh tải lên, ảnh kết quả, ảnh từng bước — không đưa lên git
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/
-│   ├── src/api/              # gọi backend, tự refresh token
-│   ├── src/auth/             # trạng thái đăng nhập, chặn trang khi chưa đăng nhập
-│   ├── src/pages/            # các trang
-│   ├── src/components/       # Layout, thanh đo cấp độ, ảnh từng bước
+│   ├── src/api/                 # gọi backend, tự làm mới token
+│   ├── src/auth/                # trạng thái đăng nhập, chặn trang khi chưa đăng nhập
+│   ├── src/pages/               # các trang
+│   ├── src/components/          # Layout, thanh đo cấp độ, khung xem ảnh, bảng đốm, histogram CLAHE
 │   └── .env.example
-└── docs/
-    ├── TongQuanDuAn.md       # phạm vi, kỹ thuật, phân công (tài liệu chính)
-    ├── pipeline.md           # quy ước vào/ra giữa các module xử lý ảnh
-    ├── leaf-disease-db.md    # schema xuất từ DrawSQL (nguồn chuẩn)
-    └── database.md           # giải thích database cho cả nhóm
+├── docs/
+│   ├── TongQuanDuAn.md          # phạm vi, kỹ thuật, phân công (tài liệu chính)
+│   ├── pipeline.md              # quy ước vào/ra giữa các module xử lý ảnh
+│   ├── GiaiDoan2_3.md           # chương tách lá, tách vết bệnh
+│   ├── chuong-web.md            # chương ứng dụng web
+│   ├── demo.md                  # kịch bản demo
+│   ├── leaf-disease-db.md       # schema xuất từ DrawSQL (nguồn chuẩn)
+│   └── database.md              # giải thích database cho cả nhóm
+├── docker-compose.yml
+└── .env.example
 ```
 
 ## Chạy nhanh bằng Docker
@@ -96,7 +128,7 @@ Lần đầu Docker sẽ build image (vài phút). Xong thì mở **http://local
 - 3 dịch vụ: `db` (PostgreSQL), `backend` (Django + gunicorn, tự chạy `migrate` khi khởi động), `frontend` (nginx phục vụ giao diện, chuyển `/api`, `/admin` tới backend). Cấu hình: [docker-compose.yml](docker-compose.yml).
 - Dữ liệu database và ảnh tải lên nằm trong volume `postgres-data`, `media`: tắt rồi bật lại vẫn còn.
 - Biến môi trường đọc từ `.env` ở thư mục gốc (mẫu: [.env.example](.env.example)). Không có `.env` thì dùng giá trị mặc định, **chỉ để chạy thử trên máy**: khi đưa lên server phải đặt `DB_PASSWORD`, `DJANGO_SECRET_KEY` mới.
-- Image backend có sẵn model `classifier.joblib`, không chứa `dataset/`.
+- Image backend có sẵn mô hình `classifier.joblib`, không chứa `dataset/`.
 
 ```powershell
 docker compose up -d                                           # chạy nền
@@ -161,7 +193,7 @@ Copy-Item .env.example .env   # VITE_API_URL: địa chỉ API backend
 npm run dev
 ```
 
-Frontend chạy ở http://localhost:5173. Chưa đăng nhập thì mọi trang chuyển về `/login`; tài khoản tạo bằng `createsuperuser` hoặc trong `/admin/`.
+Frontend chạy ở http://localhost:5173. Chưa đăng nhập thì mọi trang chuyển về `/login`; tạo tài khoản ở trang **Đăng ký** (`/register`).
 
 ### Sau khi kéo code mới
 
@@ -171,33 +203,51 @@ python manage.py migrate          # khi có migration mới
 npm install                       # trong frontend/, khi package.json thay đổi
 ```
 
-## API hiện có
+### Dữ liệu cho thí nghiệm
+
+Chạy hệ thống không cần bộ dữ liệu vì mô hình đã có sẵn. Để huấn luyện lại hoặc chạy lại các thí nghiệm, đặt ảnh PlantVillage vào `backend/dataset/plantvillage/<mã lớp>/` (tên thư mục trùng `diseases.code`, ví dụ `Tomato___Early_blight`) và mặt nạ tô tay vào `backend/dataset/masks/`. Danh sách chia train/test và bộ 30 ảnh chuẩn có sẵn trong `backend/dataset/splits/`.
+
+## API
+
+Mọi API trừ đăng ký, đăng nhập và làm mới token yêu cầu header `Authorization: Bearer <access token>`. Access token hết hạn sau 30 phút, refresh token sau 7 ngày.
 
 | Phương thức | Đường dẫn | Gửi lên | Trả về |
 |---|---|---|---|
+| POST | `/api/auth/register/` | email, họ tên, mật khẩu, đồng ý điều khoản | Tài khoản mới và cặp token (đăng nhập luôn) |
 | POST | `/api/auth/login/` | `{"email", "password"}` | `{"access", "refresh"}` |
 | POST | `/api/auth/refresh/` | `{"refresh"}` | Cặp token mới (refresh cũ bị vô hiệu) |
 | POST | `/api/auth/logout/` | `{"refresh"}` | Vô hiệu refresh token |
 | POST | `/api/auth/delete-account/` | `{"password"}` | 204; xóa tài khoản của chính mình (ẩn danh hóa, thu hồi mọi refresh token). Sai mật khẩu, hoặc tài khoản quản trị (phải xóa trong `/admin/`), trả 400 |
 | POST | `/api/diagnoses/` | multipart, trường `image` (JPG/PNG, tối đa 10 MB) | Kết quả chẩn đoán, trạng thái `done` hoặc `failed` |
-| GET | `/api/diagnoses/` | | Lịch sử của người đang đăng nhập, mới nhất trước, 20 mục/trang |
-| GET | `/api/diagnoses/:id/` | | Chi tiết một lần chẩn đoán (ảnh từng bước, khuyến nghị IPM) |
-| PATCH | `/api/diagnoses/:id/` | `{"is_bookmarked"}` | Lần chẩn đoán sau khi đánh dấu |
+| GET | `/api/diagnoses/` | `?page=`, `?is_bookmarked=true` | Lịch sử của người đang đăng nhập, mới nhất trước, 20 mục/trang |
+| GET | `/api/diagnoses/:id/` | | Chi tiết: kết quả, ảnh từng bước, danh sách đốm, khuyến nghị theo cấp và theo bệnh |
+| PATCH | `/api/diagnoses/:id/` | `{"is_bookmarked"}` | Lần chẩn đoán sau khi lưu hoặc bỏ lưu |
+| POST | `/api/feedbacks/` | mã lần chẩn đoán, tiêu đề, mô tả | Phản hồi kết quả sai |
+| POST | `/api/error-reports/` | tiêu đề, mô tả | Báo lỗi ứng dụng |
 
 Cấu trúc dữ liệu trả về: [frontend/src/api/diagnoses.js](frontend/src/api/diagnoses.js). Mỗi người chỉ xem được lần chẩn đoán của mình (của người khác trả 404).
 
-Các API khác yêu cầu header `Authorization: Bearer <access token>`. Access token hết hạn sau 30 phút, refresh token sau 7 ngày.
-
 ## Lệnh hay dùng
 
+Từ thư mục `backend/` (đã kích hoạt venv):
+
 ```powershell
-python manage.py makemigrations api   # sau khi sửa models.py
+python manage.py test api image_processing experiments     # chạy toàn bộ kiểm thử
+python -m image_processing.pipeline anh.jpg --out ket_qua  # chạy pipeline trên một ảnh, lưu ảnh từng bước
+python experiments/evaluate.py                             # đánh giá tách lá, vết bệnh, cấp độ trên 30 ảnh mặt nạ chuẩn
+python experiments/ablation.py --classify                  # thí nghiệm loại bỏ tiền xử lý (cả phân loại)
+python experiments/histogram_clahe.py                      # histogram trước/sau CLAHE, so sánh Bilateral với Median
+python experiments/visualize_morphology.py                 # hình minh họa các bước hình thái học
+python -m image_processing.train_classifier                # huấn luyện lại, so sánh SVM với Random Forest
+python manage.py makemigrations api                        # sau khi sửa models.py
 python manage.py migrate
-python manage.py check
-python manage.py test api image_processing experiments   # chạy test
-python experiments/evaluate.py   # đánh giá tách lá, vết bệnh, cấp độ trên 30 ảnh mask chuẩn
-python -m image_processing.pipeline anh.jpg --out ket_qua   # chạy pipeline trên một ảnh
-npm run lint                          # kiểm tra code frontend
+```
+
+Từ thư mục `frontend/`:
+
+```powershell
+npm run lint    # kiểm tra code frontend
+npm run build   # build bản chạy thật
 ```
 
 ## Lưu ý cho thành viên
@@ -206,5 +256,5 @@ npm run lint                          # kiểm tra code frontend
 - **Migration:** chỉ thêm migration mới, không sửa hay xóa migration đã có trên git.
 - **Ảnh không đưa lên git:** nội dung `dataset/` và `media/` bị bỏ qua (chỉ giữ file `.gitkeep`). Bộ ảnh thử của nhóm được chia sẻ riêng.
 - **Thêm thư viện Python:** cập nhật `requirements.txt` bằng `pip freeze | Out-File -Encoding utf8 requirements.txt`. **Đừng dùng `pip freeze > requirements.txt`** trong Windows PowerShell: lệnh đó ghi file dạng UTF-16, GitHub sẽ không xem được nội dung file.
-- **Pipeline:** đọc [docs/pipeline.md](docs/pipeline.md) trước khi viết module xử lý ảnh — kiểu dữ liệu vào/ra, tên ảnh trung gian, các quy tắc `pipeline.run()` kiểm tra.
+- **Pipeline:** đọc [docs/pipeline.md](docs/pipeline.md) trước khi sửa module xử lý ảnh — kiểu dữ liệu vào/ra, tên ảnh trung gian, các quy tắc `pipeline.run()` kiểm tra.
 - **OpenCV:** ảnh được đọc theo thứ tự BGR (dùng `cv2.COLOR_BGR2HSV`), và kênh H chạy 0–179 chứ không phải 0–359. Đọc ảnh bằng `pipeline.load_image()` thay cho `cv2.imread()` để không lỗi với đường dẫn có dấu tiếng Việt.
