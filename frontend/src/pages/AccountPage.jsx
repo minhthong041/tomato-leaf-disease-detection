@@ -3,10 +3,12 @@ import {
   Alert, Box, Button, Card, CardContent, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
   Stack, TextField, Typography,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import { useState } from 'react';
 
 import { errorMessage, fieldErrors } from '../api/client';
 import { useAuth } from '../auth/context';
+import PageHeader from '../components/PageHeader';
 
 // Trang "Tài khoản": hiện có mục xóa tài khoản (ẩn danh hóa, không xóa cứng)
 export default function AccountPage() {
@@ -42,17 +44,23 @@ export default function AccountPage() {
   }
 
   return (
-    <Box sx={{ maxWidth: 640, mx: 'auto' }}>
-      <Typography variant="h5" component="h1" gutterBottom>
-        Tài khoản
-      </Typography>
-      <Card variant="outlined" sx={{ borderColor: 'error.main' }}>
-        <CardContent>
+    <Stack spacing={3} sx={{ maxWidth: 720, mx: 'auto' }}>
+      <PageHeader overline="Cài đặt" title="Tài khoản" description="Quản lý tài khoản và dữ liệu của bạn." />
+      <Card sx={{ borderColor: (theme) => alpha(theme.palette.error.main, 0.4) }}>
+        <CardContent sx={{ p: { xs: 2.5, sm: 3 }, '&:last-child': { pb: { xs: 2.5, sm: 3 } } }}>
           <Stack spacing={2}>
-            <Typography variant="h6" component="h2" color="error">
-              Xóa tài khoản
-            </Typography>
-            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+              <Box sx={{
+                width: 40, height: 40, borderRadius: '10px', flexShrink: 0, display: 'grid', placeItems: 'center',
+                bgcolor: (theme) => alpha(theme.palette.error.main, 0.1), color: 'error.main',
+              }}>
+                <DeleteForeverIcon />
+              </Box>
+              <Typography variant="h6" component="h2" color="error">
+                Xóa tài khoản
+              </Typography>
+            </Stack>
+            <Box component="ul" sx={{ m: 0, pl: 2.5, color: 'text.secondary', '& li + li': { mt: 0.75 } }}>
               <li>Email và họ tên của bạn bị xóa, bạn bị đăng xuất trên mọi thiết bị và không đăng nhập lại được.</li>
               <li>Lịch sử chẩn đoán vẫn được giữ nhưng không còn gắn với thông tin cá nhân của bạn.</li>
               <li>Bạn có thể dùng lại email này để đăng ký tài khoản mới (tài khoản mới không thấy lịch sử cũ).</li>
@@ -90,6 +98,6 @@ export default function AccountPage() {
           </DialogActions>
         </form>
       </Dialog>
-    </Box>
+    </Stack>
   );
 }

@@ -2,6 +2,7 @@ import { Box, Card, CardContent, Link, Stack, Typography } from '@mui/material';
 import { Link as RouterLink } from 'react-router';
 
 import { useAuth } from '../auth/context';
+import PageHeader from '../components/PageHeader';
 import { TERMS_VERSION } from '../constants/terms';
 
 // Mỗi mục: tiêu đề và các đoạn nội dung. Sửa nội dung thì tăng TERMS_VERSION (frontend và backend).
@@ -53,30 +54,27 @@ export default function TermsPage() {
   const { isAuthenticated } = useAuth();
 
   return (
-    <Card>
-      <CardContent>
-        <Stack spacing={3}>
-          <Box>
-            <Typography variant="h4" component="h1" gutterBottom>
-              Điều khoản sử dụng
+    <Stack spacing={3} sx={{ maxWidth: 820, mx: 'auto' }}>
+      <PageHeader overline={`Phiên bản ${TERMS_VERSION}`} title="Điều khoản sử dụng" />
+      <Card>
+        <CardContent sx={{ p: { xs: 2.5, sm: 4 }, '&:last-child': { pb: { xs: 2.5, sm: 4 } } }}>
+          <Stack spacing={3}>
+            {SECTIONS.map((section) => (
+              <Box key={section.title}>
+                <Typography variant="h6" component="h2" gutterBottom>{section.title}</Typography>
+                {section.paragraphs.map((text) => (
+                  <Typography key={text} color="text.secondary" sx={{ mb: 1.5, lineHeight: 1.7 }}>{text}</Typography>
+                ))}
+              </Box>
+            ))}
+            <Typography variant="body2">
+              {isAuthenticated
+                ? <Link component={RouterLink} to="/">Về trang chủ</Link>
+                : <Link component={RouterLink} to="/register">Quay lại trang đăng ký</Link>}
             </Typography>
-            <Typography color="text.secondary">Phiên bản {TERMS_VERSION}</Typography>
-          </Box>
-          {SECTIONS.map((section) => (
-            <Box key={section.title}>
-              <Typography variant="h6" component="h2" gutterBottom>{section.title}</Typography>
-              {section.paragraphs.map((text) => (
-                <Typography key={text} sx={{ mb: 1.5 }}>{text}</Typography>
-              ))}
-            </Box>
-          ))}
-          <Typography variant="body2">
-            {isAuthenticated
-              ? <Link component={RouterLink} to="/">Về trang chủ</Link>
-              : <Link component={RouterLink} to="/register">Quay lại trang đăng ký</Link>}
-          </Typography>
-        </Stack>
-      </CardContent>
-    </Card>
+          </Stack>
+        </CardContent>
+      </Card>
+    </Stack>
   );
 }

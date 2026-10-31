@@ -1,8 +1,9 @@
-import { Alert, Box, Button, Card, CardContent, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Button, Card, CardContent, Stack, TextField } from '@mui/material';
 import { useState } from 'react';
 
 import { errorMessage, fieldErrors } from '../api/client';
 import { createErrorReport } from '../api/reports';
+import PageHeader from '../components/PageHeader';
 
 const EMPTY_FORM = { title: '', description: '' };
 const TITLE_MAX_LENGTH = 255; // trùng error_reports.title
@@ -45,16 +46,19 @@ export default function ErrorReportPage() {
   const canSubmit = form.title.trim() && form.description.trim() && !submitting;
 
   return (
-    <Box sx={{ maxWidth: 640, mx: 'auto' }}>
-      <Card>
-        <CardContent>
-          <Typography variant="h5" component="h1" gutterBottom>
-            Báo lỗi
-          </Typography>
-          <Typography color="text.secondary" sx={{ mb: 2 }}>
+    <Stack spacing={3} sx={{ maxWidth: 720, mx: 'auto' }}>
+      <PageHeader
+        overline="Hỗ trợ"
+        title="Báo lỗi"
+        description={(
+          <>
             Gặp lỗi khi dùng ứng dụng? Mô tả lại để quản trị viên xử lý. Nếu một kết quả chẩn đoán bị sai,
             hãy dùng nút &quot;Báo kết quả sai&quot; trên trang kết quả đó.
-          </Typography>
+          </>
+        )}
+      />
+      <Card>
+        <CardContent sx={{ p: { xs: 2.5, sm: 3 }, '&:last-child': { pb: { xs: 2.5, sm: 3 } } }}>
           <Stack component="form" spacing={2} onSubmit={handleSubmit} noValidate>
             {sent && <Alert severity="success">Đã gửi báo lỗi. Cảm ơn bạn!</Alert>}
             {error && <Alert severity="error">{error}</Alert>}
@@ -75,6 +79,6 @@ export default function ErrorReportPage() {
           </Stack>
         </CardContent>
       </Card>
-    </Box>
+    </Stack>
   );
 }

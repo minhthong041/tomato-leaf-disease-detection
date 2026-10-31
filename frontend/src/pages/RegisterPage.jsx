@@ -1,12 +1,12 @@
 import {
-  Alert, Box, Button, Card, CardContent, Checkbox, FormControlLabel, FormHelperText, Link, Stack,
-  TextField, Typography,
+  Alert, Box, Button, Checkbox, FormControlLabel, FormHelperText, Link, Stack, TextField, Typography,
 } from '@mui/material';
 import { useState } from 'react';
 import { Navigate, Link as RouterLink, useNavigate } from 'react-router';
 
 import { errorMessage, fieldErrors } from '../api/client';
 import { useAuth } from '../auth/context';
+import AuthShell from '../components/AuthShell';
 
 const EMPTY_FORM = { email: '', fullname: '', password: '', confirmPassword: '', acceptTerms: false };
 const PASSWORD_MISMATCH = 'Mật khẩu nhập lại không khớp.';
@@ -60,52 +60,46 @@ export default function RegisterPage() {
     && form.acceptTerms && !submitting;
 
   return (
-    <Box sx={{ maxWidth: 460, mx: 'auto' }}>
-      <Card>
-        <CardContent>
-          <Typography variant="h5" component="h1" gutterBottom>
-            Đăng ký tài khoản
-          </Typography>
-          <Stack component="form" spacing={2} onSubmit={handleSubmit} noValidate>
-            {error && <Alert severity="error">{error}</Alert>}
-            <TextField label="Email" type="email" autoComplete="email" required autoFocus
-              value={form.email} onChange={update('email')}
-              error={Boolean(errors.email)} helperText={errors.email} />
-            <TextField label="Họ và tên" autoComplete="name" required
-              value={form.fullname} onChange={update('fullname')}
-              error={Boolean(errors.fullname)} helperText={errors.fullname} />
-            <TextField label="Mật khẩu" type="password" autoComplete="new-password" required
-              value={form.password} onChange={update('password')}
-              error={Boolean(errors.password)}
-              helperText={errors.password ?? 'Ít nhất 8 ký tự, không quá phổ biến, không giống email hay họ tên.'} />
-            <TextField label="Nhập lại mật khẩu" type="password" autoComplete="new-password" required
-              value={form.confirmPassword} onChange={update('confirmPassword')}
-              error={Boolean(errors.confirmPassword)} helperText={errors.confirmPassword} />
-            <Box>
-              <FormControlLabel
-                control={<Checkbox checked={form.acceptTerms} onChange={update('acceptTerms')} />}
-                label={(
-                  <>
-                    Tôi đã đọc và đồng ý{' '}
-                    {/* Mở tab mới để không mất dữ liệu đang nhập */}
-                    <Link component={RouterLink} to="/terms" target="_blank" rel="noopener">
-                      điều khoản sử dụng
-                    </Link>
-                  </>
-                )}
-              />
-              {errors.acceptTerms && <FormHelperText error>{errors.acceptTerms}</FormHelperText>}
-            </Box>
-            <Button type="submit" variant="contained" size="large" disabled={!canSubmit}>
-              {submitting ? 'Đang đăng ký…' : 'Đăng ký'}
-            </Button>
-            <Typography variant="body2" sx={{ textAlign: 'center' }}>
-              Đã có tài khoản?{' '}
-              <Link component={RouterLink} to="/login">Đăng nhập</Link>
-            </Typography>
-          </Stack>
-        </CardContent>
-      </Card>
-    </Box>
+    <AuthShell title="Đăng ký tài khoản" subtitle="Tạo tài khoản để chẩn đoán và lưu lại lịch sử."
+      maxWidth={480}>
+      <Stack component="form" spacing={2} onSubmit={handleSubmit} noValidate>
+        {error && <Alert severity="error">{error}</Alert>}
+        <TextField label="Email" type="email" autoComplete="email" required autoFocus
+          value={form.email} onChange={update('email')}
+          error={Boolean(errors.email)} helperText={errors.email} />
+        <TextField label="Họ và tên" autoComplete="name" required
+          value={form.fullname} onChange={update('fullname')}
+          error={Boolean(errors.fullname)} helperText={errors.fullname} />
+        <TextField label="Mật khẩu" type="password" autoComplete="new-password" required
+          value={form.password} onChange={update('password')}
+          error={Boolean(errors.password)}
+          helperText={errors.password ?? 'Ít nhất 8 ký tự, không quá phổ biến, không giống email hay họ tên.'} />
+        <TextField label="Nhập lại mật khẩu" type="password" autoComplete="new-password" required
+          value={form.confirmPassword} onChange={update('confirmPassword')}
+          error={Boolean(errors.confirmPassword)} helperText={errors.confirmPassword} />
+        <Box>
+          <FormControlLabel
+            control={<Checkbox checked={form.acceptTerms} onChange={update('acceptTerms')} />}
+            label={(
+              <>
+                Tôi đã đọc và đồng ý{' '}
+                {/* Mở tab mới để không mất dữ liệu đang nhập */}
+                <Link component={RouterLink} to="/terms" target="_blank" rel="noopener">
+                  điều khoản sử dụng
+                </Link>
+              </>
+            )}
+          />
+          {errors.acceptTerms && <FormHelperText error>{errors.acceptTerms}</FormHelperText>}
+        </Box>
+        <Button type="submit" variant="contained" size="large" disabled={!canSubmit}>
+          {submitting ? 'Đang đăng ký…' : 'Đăng ký'}
+        </Button>
+        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+          Đã có tài khoản?{' '}
+          <Link component={RouterLink} to="/login" sx={{ fontWeight: 600 }}>Đăng nhập</Link>
+        </Typography>
+      </Stack>
+    </AuthShell>
   );
 }
