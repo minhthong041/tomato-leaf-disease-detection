@@ -36,7 +36,10 @@ export default function Layout() {
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <AppBar position="sticky" color="inherit" elevation={0}
-        sx={{ bgcolor: 'rgba(255, 255, 255, 0.92)', backdropFilter: 'blur(8px)', borderBottom: 1, borderColor: 'divider' }}>
+        sx={{
+          bgcolor: 'rgba(255, 255, 255, 0.92)', backdropFilter: 'blur(8px)', borderBottom: 1, borderColor: 'divider',
+          displayPrint: 'none',
+        }}>
         <Container maxWidth="lg" disableGutters>
           <Toolbar sx={{ gap: 1, minHeight: { xs: 60, md: 68 } }}>
             <Stack direction="row" spacing={1.25} component={RouterLink} to="/"
@@ -92,7 +95,7 @@ export default function Layout() {
         </Container>
       </AppBar>
 
-      <Container maxWidth="lg" sx={{ py: { xs: 3, md: 5 }, flexGrow: 1 }}>
+      <Container maxWidth="lg" sx={{ py: { xs: 3, md: 5 }, flexGrow: 1, '@media print': { py: 0 } }}>
         <Outlet />
       </Container>
 
@@ -108,7 +111,7 @@ export default function Layout() {
 
       {isAuthenticated && (
         <Paper component="nav" aria-label="Menu chính" square elevation={0} sx={{
-          display: { xs: 'block', md: 'none' }, position: 'fixed', left: 0, right: 0, bottom: 0,
+          display: { xs: 'block', md: 'none' }, displayPrint: 'none', position: 'fixed', left: 0, right: 0, bottom: 0,
           zIndex: (theme) => theme.zIndex.appBar, borderTop: 1, borderColor: 'divider',
           pb: 'env(safe-area-inset-bottom)',
         }}>
