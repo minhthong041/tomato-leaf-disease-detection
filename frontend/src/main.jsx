@@ -1,3 +1,8 @@
+// Font Be Vietnam Pro tự host (không phụ thuộc Google Fonts khi demo không có mạng)
+import '@fontsource/be-vietnam-pro/400.css';
+import '@fontsource/be-vietnam-pro/500.css';
+import '@fontsource/be-vietnam-pro/600.css';
+import '@fontsource/be-vietnam-pro/700.css';
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
 import { StrictMode } from 'react';

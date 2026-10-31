@@ -20,6 +20,13 @@ export const STEP_LABELS = {
   lesion_mask: 'Mặt nạ vết bệnh (sau opening/closing)',
 };
 
+// Nhóm các bước theo giai đoạn để hiển thị, trùng các mục "Giai đoạn" trong image_processing/steps.py
+export const STEP_STAGES = [
+  { title: 'Giai đoạn 1 · Tiền xử lý', steps: ['resized', 'denoised', 'clahe'] },
+  { title: 'Giai đoạn 2 · Tách lá khỏi nền', steps: ['saturation', 'leaf_mask'] },
+  { title: 'Giai đoạn 3 · Tách vết bệnh', steps: ['roi', 'healthy_mask', 'lesion_mask_raw', 'lesion_mask'] },
+];
+
 export const STATUS_LABELS = {
   pending: 'Chờ xử lý',
   processing: 'Đang xử lý',

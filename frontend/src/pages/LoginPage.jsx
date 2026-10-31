@@ -1,11 +1,10 @@
-import {
-  Alert, Box, Button, Card, CardContent, Link, Stack, TextField, Typography,
-} from '@mui/material';
+import { Alert, Button, Link, Stack, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
 import { Navigate, Link as RouterLink, useLocation, useNavigate } from 'react-router';
 
 import { errorMessage } from '../api/client';
 import { useAuth } from '../auth/context';
+import AuthShell from '../components/AuthShell';
 
 export default function LoginPage() {
   const { isAuthenticated, notice, login } = useAuth();
@@ -34,30 +33,23 @@ export default function LoginPage() {
   }
 
   return (
-    <Box sx={{ maxWidth: 420, mx: 'auto' }}>
-      <Card>
-        <CardContent>
-          <Typography variant="h5" component="h1" gutterBottom>
-            Đăng nhập
-          </Typography>
-          <Stack component="form" spacing={2} onSubmit={handleSubmit} noValidate>
-            {notice && !error && <Alert severity="success">{notice}</Alert>}
-            {error && <Alert severity="error">{error}</Alert>}
-            <TextField label="Email" type="email" autoComplete="email" required autoFocus
-              value={email} onChange={(e) => setEmail(e.target.value)} />
-            <TextField label="Mật khẩu" type="password" autoComplete="current-password" required
-              value={password} onChange={(e) => setPassword(e.target.value)} />
-            <Button type="submit" variant="contained" size="large"
-              disabled={submitting || !email || !password}>
-              {submitting ? 'Đang đăng nhập…' : 'Đăng nhập'}
-            </Button>
-            <Typography variant="body2" sx={{ textAlign: 'center' }}>
-              Chưa có tài khoản?{' '}
-              <Link component={RouterLink} to="/register">Đăng ký</Link>
-            </Typography>
-          </Stack>
-        </CardContent>
-      </Card>
-    </Box>
+    <AuthShell title="Đăng nhập" subtitle="Chào mừng bạn quay lại. Đăng nhập để chẩn đoán và xem lịch sử.">
+      <Stack component="form" spacing={2} onSubmit={handleSubmit} noValidate>
+        {notice && !error && <Alert severity="success">{notice}</Alert>}
+        {error && <Alert severity="error">{error}</Alert>}
+        <TextField label="Email" type="email" autoComplete="email" required autoFocus
+          value={email} onChange={(e) => setEmail(e.target.value)} />
+        <TextField label="Mật khẩu" type="password" autoComplete="current-password" required
+          value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Button type="submit" variant="contained" size="large"
+          disabled={submitting || !email || !password}>
+          {submitting ? 'Đang đăng nhập…' : 'Đăng nhập'}
+        </Button>
+        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+          Chưa có tài khoản?{' '}
+          <Link component={RouterLink} to="/register" sx={{ fontWeight: 600 }}>Đăng ký</Link>
+        </Typography>
+      </Stack>
+    </AuthShell>
   );
 }
