@@ -11,7 +11,7 @@ import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 
 from experiments import ablation, evaluate
-from image_processing import classifier, preprocessing, train_classifier
+from image_processing import classifier, preprocessing, segmentation, train_classifier
 from image_processing.errors import PipelineError
 
 SIZE = preprocessing.TARGET_SIZE
@@ -73,7 +73,7 @@ class ConfigTests(TestCase):
 
 
 class PredictMasksTests(TestCase):
-    def test_seed_is_set_and_prepared_image_is_segmented(self):
+    def test_prepared_image_is_segmented_after_seed(self):
         calls = []
         prepared = np.full((SIZE, SIZE, 3), 7, np.uint8)
 
@@ -83,12 +83,13 @@ class PredictMasksTests(TestCase):
             return LEAF, {}
 
         with (
-            mock.patch.object(ablation.cv2, 'setRNGSeed', side_effect=lambda seed: calls.append(('seed', seed))),
-            mock.patch.object(ablation.segmentation, 'segment_leaf', side_effect=segment_leaf),
-            mock.patch.object(ablation.segmentation, 'segment_lesions', return_value=(LESION, {})),
+            mock.patch.object(evaluate.cv2, 'setRNGSeed', side_effect=lambda seed: calls.append(('seed', seed))),
+            mock.patch.object(evaluate.preprocessing, 'preprocess', side_effect=AssertionError('không được gọi')),
+            mock.patch.object(segmentation, 'segment_leaf', side_effect=segment_leaf),
+            mock.patch.object(segmentation, 'segment_lesions', return_value=(LESION, {})),
         ):
-            leaf, lesion = ablation.predict_masks(leaf_image(), lambda image: prepared)
-        self.assertEqual(calls, [('seed', ablation.pipeline.RNG_SEED), 'segment_leaf'])
+            leaf, lesion = evaluate.predict_masks(leaf_image(), lambda image: prepared)
+        self.assertEqual(calls, [('seed', evaluate.pipeline.RNG_SEED), 'segment_leaf'])
         self.assertIs(leaf, LEAF)
         self.assertIs(lesion, LESION)
 
@@ -102,8 +103,8 @@ class RunAblationTests(TestCase):
         path.parent.mkdir()
         cv2.imencode('.png', leaf_image())[1].tofile(str(path))
         self.items = [evaluate.GroundTruth(path, 'Tomato___Early_blight', LEAF, LESION)]
-        self.enterContext(mock.patch.object(ablation.segmentation, 'segment_leaf', return_value=(LEAF, {})))
-        self.enterContext(mock.patch.object(ablation.segmentation, 'segment_lesions', return_value=(LESION, {})))
+        self.enterContext(mock.patch.object(segmentation, 'segment_leaf', return_value=(LEAF, {})))
+        self.enterContext(mock.patch.object(segmentation, 'segment_lesions', return_value=(LESION, {})))
         self.enterContext(contextlib.redirect_stderr(io.StringIO()))
 
     def test_one_row_per_image_and_config(self):
@@ -159,7 +160,7 @@ class ClassifyFeaturesTests(TestCase):
                                       train_classifier._features_for_path(self.path))
 
     def test_none_when_leaf_not_found_or_image_unreadable(self):
-        with mock.patch.object(ablation.segmentation, 'segment_leaf', side_effect=PipelineError('Không thấy lá')):
+        with mock.patch.object(segmentation, 'segment_leaf', side_effect=PipelineError('Không thấy lá')):
             self.assertIsNone(ablation._classify_features(self.path, preprocessing.resize))
         self.path.write_bytes(b'khong phai anh')
         self.assertIsNone(ablation._classify_features(self.path, preprocessing.resize))
@@ -199,6 +200,14 @@ class RunClassificationTests(TestCase):
         self.assertEqual((result['bo_qua_train'], result['bo_qua_test']), (2, 2))
         self.assertEqual(result['accuracy'], 0.5)
         self.assertEqual(set(result['per_class_f1']), set(self.CLASSES))
+        self.assertIsNone(result['mcnemar'])
+
+    def test_mcnemar_against_first_config(self):
+        self.configs = {'đầu': preprocessing.resize, 'sau': preprocessing.denoise}
+        first, second = self.run_classification().values()
+        self.assertIsNone(first['mcnemar'])
+        # Cùng đặc trưng giả nên hai cấu hình đúng/sai y hệt nhau
+        self.assertEqual(second['mcnemar'], {'chi_cau_hinh_dau_dung': 0, 'chi_cau_hinh_nay_dung': 0, 'p': 1.0})
 
     def test_features_are_cached_per_config(self):
         first = self.run_classification()
@@ -212,8 +221,13 @@ class RunClassificationTests(TestCase):
         self.assertEqual(self.fake.call_count, 2 * calls)
 
     def test_main_classify_writes_json_and_tables(self):
-        results = {'chỉ resize': {'accuracy': 0.9, 'macro_f1': 0.8, 'per_class_f1': {self.CLASSES[0]: 0.7},
-                                  'bo_qua_train': 1, 'bo_qua_test': 0}}
+        results = {
+            'pipeline': {'accuracy': 0.9, 'macro_f1': 0.8, 'per_class_f1': {self.CLASSES[0]: 0.7},
+                         'bo_qua_train': 1, 'bo_qua_test': 0, 'mcnemar': None},
+            'chỉ resize': {'accuracy': 0.85, 'macro_f1': 0.75, 'per_class_f1': {self.CLASSES[0]: 0.6},
+                           'bo_qua_train': 0, 'bo_qua_test': 0,
+                           'mcnemar': {'chi_cau_hinh_dau_dung': 30, 'chi_cau_hinh_nay_dung': 12, 'p': 0.0081}},
+        }
         out = self.train[0].parent.parent / 'kết quả.json'
         stdout = io.StringIO()
         with (
@@ -224,5 +238,20 @@ class RunClassificationTests(TestCase):
             self.assertEqual(ablation.main(['--classify', '--jobs', '2', '--out', str(out)]), 0)
         self.assertEqual(run.call_args.kwargs['n_jobs'], 2)
         self.assertEqual(json.loads(out.read_text(encoding='utf-8')), results)
-        self.assertIn('| chỉ resize | 0.900 | 0.800 | 1 / 0 |', stdout.getvalue())
-        self.assertIn('| Early_blight | 0.700 |', stdout.getvalue())
+        self.assertIn('| pipeline | 0.900 | 0.800 | 1 / 0 | – | – |', stdout.getvalue())
+        self.assertIn('| chỉ resize | 0.850 | 0.750 | 0 / 0 | 30 / 12 | 0.008 |', stdout.getvalue())
+        self.assertIn('| Early_blight | 0.700 | 0.600 |', stdout.getvalue())
+
+
+class McNemarTests(TestCase):
+    def test_counts_discordant_pairs_and_exact_p(self):
+        reference = np.array([True] * 10 + [False] * 2 + [True] * 5)
+        other = np.array([False] * 10 + [True] * 2 + [True] * 5)
+        result = ablation.mcnemar_test(reference, other)
+        self.assertEqual((result['chi_cau_hinh_dau_dung'], result['chi_cau_hinh_nay_dung']), (10, 2))
+        # p hai phía = 2 * P(X <= 2), X ~ B(12, 0,5) = 2 * 79 / 4096
+        self.assertAlmostEqual(result['p'], 2 * 79 / 4096)
+
+    def test_identical_predictions_give_p_one(self):
+        same = np.array([True, False, True])
+        self.assertEqual(ablation.mcnemar_test(same, same)['p'], 1.0)

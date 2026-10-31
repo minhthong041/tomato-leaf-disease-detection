@@ -14,16 +14,20 @@ experiments/output/ablation_features/ nên chạy lại (hoặc chạy tiếp sa
 Cách làm
 - Không sửa preprocessing.py: mỗi cấu hình ghép các hàm resize, denoise (Bilateral), equalize (CLAHE) của
   pipeline; Median Blur không có hàm riêng nên gọi thẳng cv2.medianBlur với preprocessing.MEDIAN_KSIZE.
-- Sau tiền xử lý, ảnh đi qua segment_leaf và segment_lesions như pipeline.run(), cùng seed GrabCut
-  (pipeline.RNG_SEED), rồi chấm bằng evaluate.evaluate_image như evaluate.py. Ảnh gốc được đọc một lần
-  cho mọi cấu hình.
+- Sau tiền xử lý, ảnh đi qua evaluate.predict_masks (segment_leaf, segment_lesions, cùng seed GrabCut như
+  pipeline.run()) rồi chấm bằng evaluate.evaluate_image như evaluate.py. Ảnh gốc được đọc một lần cho mọi
+  cấu hình.
 - Cấu hình "Bilateral + CLAHE" chính là preprocessing.preprocess(), nên dòng này trùng bảng của evaluate.py.
 - Tiền xử lý ảnh hưởng cả segment_leaf (GrabCut lấy màu từ ảnh đã xử lý), nên bảng có cả IoU lá.
+- Hạn chế: ngưỡng tách vết bệnh (2C) được dò trên ảnh Bilateral + CLAHE và trên chính 30 ảnh mask chuẩn này,
+  nên phần phân đoạn thiên về cấu hình pipeline.
 - Phần phân loại: mỗi cấu hình trích lại đặc trưng của toàn bộ train/test (tiền xử lý bằng cấu hình đó,
   segment_leaf, classifier.extract_features như train_classifier) rồi huấn luyện lại mô hình đã chốt ở 3E
   với đúng siêu tham số của models/classifier.joblib, đo accuracy và macro F1 trên test. Không tinh chỉnh
   lại siêu tham số cho từng cấu hình (lưới của 3E mất nhiều giờ), nên các cấu hình khác hơi chịu thiệt.
   Ảnh không tách được lá bị bỏ khỏi train và tính là đoán sai ở test, để mọi cấu hình chấm trên cùng số ảnh.
+- Mọi cấu hình chấm trên cùng ảnh test nên so với pipeline bằng kiểm định McNemar (ghép cặp, dạng chính xác):
+  đếm ảnh chỉ pipeline đúng và ảnh chỉ cấu hình kia đúng; p nhỏ (dưới 0,05) mới coi là khác thật.
 """
 import argparse
 import csv
@@ -38,6 +42,7 @@ import cv2
 import joblib
 import numpy as np
 from joblib import Parallel, delayed
+from scipy.stats import binomtest
 from sklearn.base import clone
 from sklearn.metrics import accuracy_score, f1_score
 
@@ -47,7 +52,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from experiments import evaluate  # noqa: E402
-from image_processing import classifier, pipeline, preprocessing, segmentation, train_classifier  # noqa: E402
+from image_processing import classifier, pipeline, preprocessing, train_classifier  # noqa: E402
 from image_processing.errors import PipelineError  # noqa: E402
 
 OUTPUT_FILE = BACKEND_DIR / 'experiments' / 'output' / 'ablation.csv'
@@ -71,15 +76,6 @@ CONFIGS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
 }
 
 
-def predict_masks(image: np.ndarray, prepare: Callable[[np.ndarray], np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
-    """(leaf_mask, lesion_mask) như evaluate.predict_masks nhưng tiền xử lý bằng prepare."""
-    cv2.setRNGSeed(pipeline.RNG_SEED)
-    processed = prepare(image)
-    leaf_mask, _ = segmentation.segment_leaf(processed)
-    lesion_mask, _ = segmentation.segment_lesions(processed, leaf_mask)
-    return leaf_mask, lesion_mask
-
-
 def run_ablation(items: list[evaluate.GroundTruth],
                  configs: dict[str, Callable[[np.ndarray], np.ndarray]] = CONFIGS) -> dict[str, list[dict]]:
     """{tên cấu hình: các dòng như evaluate.evaluate_all}. Lỗi của một cấu hình ghi vào cột loi của dòng đó."""
@@ -94,7 +90,7 @@ def run_ablation(items: list[evaluate.GroundTruth],
             row = dict(base)
             if image is not None:
                 try:
-                    leaf_pred, lesion_pred = predict_masks(image, prepare)
+                    leaf_pred, lesion_pred = evaluate.predict_masks(image, prepare)
                 except PipelineError as exc:
                     row['loi'] = str(exc)
                 else:
@@ -113,7 +109,7 @@ def write_csv(results: dict[str, list[dict]], out_file: Path) -> None:
         writer.writeheader()
         for name, rows in results.items():
             for row in rows:
-                writer.writerow({'cau_hinh': name, **{key: evaluate._format_cell(row.get(key))
+                writer.writerow({'cau_hinh': name, **{key: evaluate.format_cell(row.get(key))
                                                       for key in evaluate.CSV_COLUMNS}})
 
 
@@ -126,9 +122,9 @@ def print_summary(results: dict[str, list[dict]]) -> None:
         s = evaluate.summarize(rows)
         false_alarm = f'{s["bao_nham"]}/{s["so_anh_trong"]}' if s['so_anh_trong'] else '–'
         mae = '–' if s['mae_s'] is None else f'{s["mae_s"]:.2f}'
-        print(f'| {name} | {evaluate._fmt(s["iou_la"])} | {evaluate._fmt(s["iou_vet_benh"])} '
-              f'| {evaluate._fmt(s["dice_vet_benh"])} | {mae} | {evaluate._fmt(s["dung_cap"], True)} '
-              f'| {evaluate._fmt(s["lech_toi_da_1_cap"], True)} | {false_alarm} |')
+        print(f'| {name} | {evaluate.fmt(s["iou_la"])} | {evaluate.fmt(s["iou_vet_benh"])} '
+              f'| {evaluate.fmt(s["dice_vet_benh"])} | {mae} | {evaluate.fmt(s["dung_cap"], True)} '
+              f'| {evaluate.fmt(s["lech_toi_da_1_cap"], True)} | {false_alarm} |')
 
     print('\nSai số S theo lớp (điểm %):\n')
     names = list(results)
@@ -163,16 +159,22 @@ def _classify_features(path: Path, prepare: Callable[[np.ndarray], np.ndarray]) 
     return np.asarray(classifier.extract_features(processed, mask), dtype=np.float64)
 
 
+# Mã các hàm của file này quyết định đặc trưng, đưa vào khóa cache của config_features
+_FEATURE_CODE = ''.join(inspect.getsource(function) for function in (_classify_features, _median))
+
+
 def config_features(name: str, prepare: Callable[[np.ndarray], np.ndarray], paths: list[Path], split: str,
                     n_jobs: int = train_classifier.FEATURE_N_JOBS) -> tuple[np.ndarray, np.ndarray]:
     """(X, ok) của một cấu hình trên paths; ok[i] False nếu ảnh i bị bỏ (dòng X là NaN).
 
     Cache theo cấu hình và split; cache mất hiệu lực khi đổi danh sách ảnh, mã của prepare hoặc phần mã
-    mà train_classifier.feature_signature theo dõi (tiền xử lý, segment_leaf, trích đặc trưng).
+    mà train_classifier.feature_signature theo dõi (tiền xử lý, segment_leaf, trích đặc trưng), kể cả
+    _classify_features và _median của file này.
     """
     hasher = hashlib.sha256(train_classifier.feature_signature(paths).encode('utf-8'))
     hasher.update(name.encode('utf-8'))
     hasher.update(inspect.getsource(prepare).encode('utf-8'))
+    hasher.update(_FEATURE_CODE.encode('utf-8'))
     signature = hasher.hexdigest()
     # Tên cấu hình có dấu và dấu cách nên đặt tên file theo băm của tên
     cache = FEATURES_DIR / f'{split}_{hashlib.sha256(name.encode("utf-8")).hexdigest()[:10]}.npz'
@@ -197,12 +199,14 @@ def config_features(name: str, prepare: Callable[[np.ndarray], np.ndarray], path
 def run_classification(train_paths: list[Path], test_paths: list[Path],
                        configs: dict[str, Callable[[np.ndarray], np.ndarray]] = CONFIGS, model=None,
                        n_jobs: int = train_classifier.FEATURE_N_JOBS) -> dict[str, dict]:
-    """{tên cấu hình: accuracy, macro F1, F1 từng lớp, số ảnh bị bỏ} khi huấn luyện lại model trên đặc trưng
-    của cấu hình đó. model mặc định là models/classifier.joblib (chỉ lấy siêu tham số, huấn luyện lại từ đầu)."""
+    """{tên cấu hình: accuracy, macro F1, F1 từng lớp, số ảnh bị bỏ, McNemar so với cấu hình đầu} khi huấn
+    luyện lại model trên đặc trưng của cấu hình đó. model mặc định là models/classifier.joblib (chỉ lấy siêu
+    tham số, huấn luyện lại từ đầu)."""
     base = clone(joblib.load(classifier.MODEL_PATH) if model is None else model)
     y_train = np.asarray([path.parent.name for path in train_paths])
     y_test = np.asarray([path.parent.name for path in test_paths])
     results = {}
+    reference = None  # đúng/sai từng ảnh test của cấu hình đầu
     for name, prepare in configs.items():
         X_train, ok_train = config_features(name, prepare, train_paths, 'train', n_jobs)
         X_test, ok_test = config_features(name, prepare, test_paths, 'test', n_jobs)
@@ -214,22 +218,43 @@ def run_classification(train_paths: list[Path], test_paths: list[Path],
         if ok_test.any():
             predictions[ok_test] = fitted.classes_[fitted.predict_proba(X_test[ok_test]).argmax(axis=1)]
         per_class = f1_score(y_test, predictions, labels=labels, average=None, zero_division=0)
+        correct = predictions == y_test
+        if reference is None:
+            reference, mcnemar = correct, None
+        else:
+            mcnemar = mcnemar_test(reference, correct)
         results[name] = {
             'accuracy': float(accuracy_score(y_test, predictions)),
             'macro_f1': float(f1_score(y_test, predictions, labels=labels, average='macro', zero_division=0)),
             'per_class_f1': {label: float(f1) for label, f1 in zip(labels, per_class)},
             'bo_qua_train': int((~ok_train).sum()),
             'bo_qua_test': int((~ok_test).sum()),
+            'mcnemar': mcnemar,
         }
     return results
 
 
+def mcnemar_test(reference: np.ndarray, other: np.ndarray) -> dict:
+    """McNemar dạng chính xác giữa hai mảng đúng/sai trên cùng ảnh: p hai phía của kiểm định nhị thức trên các
+    ảnh chỉ một bên đúng."""
+    only_reference = int((reference & ~other).sum())
+    only_other = int((~reference & other).sum())
+    total = only_reference + only_other
+    p = binomtest(only_reference, total, 0.5).pvalue if total else 1.0
+    return {'chi_cau_hinh_dau_dung': only_reference, 'chi_cau_hinh_nay_dung': only_other, 'p': float(p)}
+
+
 def print_classification(results: dict[str, dict]) -> None:
     """Bảng accuracy, macro F1 mỗi cấu hình một dòng, rồi bảng F1 theo lớp mỗi cấu hình một cột."""
-    print('| Cấu hình | Accuracy | Macro F1 | Ảnh bị bỏ (train / test) |')
-    print('|---|---:|---:|---:|')
+    print('| Cấu hình | Accuracy | Macro F1 | Ảnh bị bỏ (train / test) '
+          '| Chỉ cấu hình đầu đúng / chỉ cấu hình này đúng | p (McNemar) |')
+    print('|---|---:|---:|---:|---:|---:|')
     for name, r in results.items():
-        print(f'| {name} | {r["accuracy"]:.3f} | {r["macro_f1"]:.3f} | {r["bo_qua_train"]} / {r["bo_qua_test"]} |')
+        m = r.get('mcnemar')
+        paired = '– | –' if m is None else (f'{m["chi_cau_hinh_dau_dung"]} / {m["chi_cau_hinh_nay_dung"]} '
+                                             f'| {m["p"]:.3f}')
+        print(f'| {name} | {r["accuracy"]:.3f} | {r["macro_f1"]:.3f} | {r["bo_qua_train"]} / {r["bo_qua_test"]} '
+              f'| {paired} |')
 
     print('\nF1 theo lớp:\n')
     names = list(results)

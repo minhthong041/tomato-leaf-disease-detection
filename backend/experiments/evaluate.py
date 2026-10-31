@@ -34,6 +34,7 @@ Cách tính
 import argparse
 import csv
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -137,12 +138,16 @@ def load_ground_truth(list_file: Path = GROUND_TRUTH_FILE, masks_dir: Path = MAS
     return items
 
 
-def predict_masks(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """(leaf_mask, lesion_mask) do pipeline dự đoán, cùng các bước như pipeline.run()."""
+def predict_masks(image: np.ndarray,
+                  prepare: Callable[[np.ndarray], np.ndarray] | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """(leaf_mask, lesion_mask) do pipeline dự đoán, cùng các bước như pipeline.run().
+
+    prepare thay cho preprocessing.preprocess (ảnh gốc -> ảnh 512x512), dùng cho ablation tiền xử lý.
+    """
     # Cùng seed GrabCut với pipeline.run(): mask mỗi ảnh khớp kết quả trên web và không phụ thuộc
     # ảnh nào chạy trước nó trong danh sách
     cv2.setRNGSeed(pipeline.RNG_SEED)
-    processed, _ = preprocessing.preprocess(image)
+    processed = preprocessing.preprocess(image)[0] if prepare is None else prepare(image)
     leaf_mask, _ = segmentation.segment_leaf(processed)
     lesion_mask, _ = segmentation.segment_lesions(processed, leaf_mask)
     return leaf_mask, lesion_mask
@@ -304,10 +309,10 @@ def write_csv(rows: list[dict], out_file: Path) -> None:
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
         writer.writeheader()
         for row in rows:
-            writer.writerow({key: _format_cell(row.get(key)) for key in CSV_COLUMNS})
+            writer.writerow({key: format_cell(row.get(key)) for key in CSV_COLUMNS})
 
 
-def _format_cell(value) -> str:
+def format_cell(value) -> str:
     if value is None:
         return ''
     if isinstance(value, bool):
@@ -317,7 +322,7 @@ def _format_cell(value) -> str:
     return str(value)
 
 
-def _fmt(value, percent=False) -> str:
+def fmt(value, percent=False) -> str:
     if value is None:
         return '–'
     return f'{value:.1%}' if percent else f'{value:.3f}'
@@ -335,9 +340,9 @@ def print_summary(rows: list[dict]) -> None:
         s = summarize(group)
         false_alarm = f'{s["bao_nham"]}/{s["so_anh_trong"]}' if s['so_anh_trong'] else '–'
         mae = '–' if s['mae_s'] is None else f'{s["mae_s"]:.2f}'
-        print(f'| {name} | {s["so_anh"]} | {_fmt(s["iou_la"])} | {_fmt(s["iou_vet_benh"])} '
-              f'| {_fmt(s["dice_vet_benh"])} | {mae} | {_fmt(s["dung_cap"], True)} '
-              f'| {_fmt(s["lech_toi_da_1_cap"], True)} | {false_alarm} |')
+        print(f'| {name} | {s["so_anh"]} | {fmt(s["iou_la"])} | {fmt(s["iou_vet_benh"])} '
+              f'| {fmt(s["dice_vet_benh"])} | {mae} | {fmt(s["dung_cap"], True)} '
+              f'| {fmt(s["lech_toi_da_1_cap"], True)} | {false_alarm} |')
     errors = sum(bool(row['loi']) for row in rows)
     if errors:
         print(f'\n{errors} ảnh bị bỏ qua, xem cột loi trong file CSV.')
