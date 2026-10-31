@@ -1,6 +1,8 @@
 import AddPhotoAlternateOutlinedIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
 import BiotechOutlinedIcon from '@mui/icons-material/BiotechOutlined';
+import CancelIcon from '@mui/icons-material/Cancel';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import PhotoCameraOutlinedIcon from '@mui/icons-material/PhotoCameraOutlined';
 import CropFreeIcon from '@mui/icons-material/CropFree';
 import FilterVintageOutlinedIcon from '@mui/icons-material/FilterVintageOutlined';
 import ImageSearchIcon from '@mui/icons-material/ImageSearch';
@@ -9,7 +11,7 @@ import {
   Alert, Box, Button, Card, CardContent, CircularProgress, Stack, Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router';
 
 import { errorMessage } from '../api/client';
@@ -33,6 +35,83 @@ const PIPELINE_STAGES = [
   { icon: <BiotechOutlinedIcon />, title: 'Nhận diện bệnh', text: 'Đặc trưng màu, kết cấu → tên bệnh' },
 ];
 
+// Ảnh được đưa về 512×512 (kéo giãn, không cắt). Ảnh PlantVillage 256×256 vẫn cho kết quả tốt nên chỉ
+// cảnh báo khi cạnh ngắn dưới 256 px; ảnh dài hơn tỉ lệ 16:10 thì lá bị méo rõ khi kéo về hình vuông.
+const MIN_SIDE = 256;
+const MAX_ASPECT = 1.6;
+
+// Máy có màn hình cảm ứng là chính (điện thoại, máy tính bảng): hiện thêm nút mở camera
+const COARSE_POINTER = '(pointer: coarse)';
+function subscribePointer(callback) {
+  const query = window.matchMedia(COARSE_POINTER);
+  query.addEventListener('change', callback);
+  return () => query.removeEventListener('change', callback);
+}
+function useCoarsePointer() {
+  return useSyncExternalStore(subscribePointer, () => window.matchMedia(COARSE_POINTER).matches, () => false);
+}
+
+// Cảnh báo (không chặn gửi) theo kích thước ảnh đã chọn
+function sizeWarnings({ width, height }) {
+  const warnings = [];
+  if (Math.min(width, height) < MIN_SIDE) {
+    warnings.push(`Ảnh khá nhỏ (${width}×${height} px): vết bệnh nhỏ có thể không tách được. Nên dùng ảnh có cạnh ngắn từ ${MIN_SIDE} px.`);
+  }
+  if (Math.max(width, height) / Math.min(width, height) > MAX_ASPECT) {
+    warnings.push(`Ảnh dài (${width}×${height} px) sẽ bị kéo giãn về hình vuông 512×512. Nên cắt ảnh gần vuông quanh chiếc lá.`);
+  }
+  return warnings;
+}
+
+// Hình minh họa nên / không nên chụp: một lá trên nền trơn và nhiều lá chồng nhau trên nền đất
+const LEAF_PATH = 'M0 -30 C 16 -22 20 6 0 30 C -20 6 -16 -22 0 -30 Z';
+
+function Leaf({ x, y, rotate = 0, scale = 1, fill = '#3f9a52', spots = false }) {
+  return (
+    <g transform={`translate(${x} ${y}) rotate(${rotate}) scale(${scale})`}>
+      <path d={LEAF_PATH} fill={fill} />
+      <path d="M0 -26 L0 28" stroke="#2a6b38" strokeWidth={1.5} />
+      {spots && (
+        <>
+          <circle cx={-6} cy={-4} r={3.5} fill="#7a4a1d" />
+          <circle cx={7} cy={8} r={2.5} fill="#7a4a1d" />
+          <circle cx={-4} cy={14} r={2} fill="#7a4a1d" />
+        </>
+      )}
+    </g>
+  );
+}
+
+function PhotoExample({ good }) {
+  return (
+    <Box component="figure" sx={{ m: 0, minWidth: 0 }}>
+      <Box component="svg" viewBox="0 0 120 90" role="img"
+        aria-label={good ? 'Ví dụ nên chụp: một lá trên nền trắng' : 'Ví dụ không nên chụp: nhiều lá chồng nhau trên nền đất'}
+        sx={{ display: 'block', width: '100%', borderRadius: '8px', border: 1, borderColor: 'divider' }}>
+        {good ? (
+          <>
+            <rect width="120" height="90" fill="#f4f4f1" />
+            <Leaf x={60} y={45} rotate={-20} scale={1.25} spots />
+          </>
+        ) : (
+          <>
+            <rect width="120" height="90" fill="#6b5640" />
+            <Leaf x={30} y={40} rotate={35} fill="#4c8a3f" />
+            <Leaf x={58} y={52} rotate={-15} fill="#3f9a52" spots />
+            <Leaf x={86} y={36} rotate={60} fill="#5a9a40" />
+            <Leaf x={72} y={70} rotate={100} fill="#4c8a3f" />
+            <Leaf x={22} y={74} rotate={-70} fill="#5a9a40" />
+          </>
+        )}
+      </Box>
+      <Stack component="figcaption" direction="row" spacing={0.5} sx={{ mt: 0.75, alignItems: 'center' }}>
+        {good ? <CheckCircleIcon color="success" sx={{ fontSize: 18 }} /> : <CancelIcon color="error" sx={{ fontSize: 18 }} />}
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>{good ? 'Nên' : 'Không nên'}</Typography>
+      </Stack>
+    </Box>
+  );
+}
+
 function formatSize(bytes) {
   return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
@@ -44,6 +123,8 @@ export default function UploadPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [dimensions, setDimensions] = useState(null);
+  const coarsePointer = useCoarsePointer();
 
   // Giải phóng URL xem trước cũ khi đổi ảnh hoặc rời trang
   useEffect(() => () => preview && URL.revokeObjectURL(preview), [preview]);
@@ -56,6 +137,7 @@ export default function UploadPage() {
     }
     setError('');
     setFile(selected);
+    setDimensions(null);
     setPreview(URL.createObjectURL(selected));
   }
 
@@ -92,6 +174,7 @@ export default function UploadPage() {
   const fileInput = (
     <input hidden type="file" accept={ACCEPTED_TYPES.join(',')} onChange={handleFileChange} disabled={submitting} />
   );
+  const warnings = dimensions ? sizeWarnings(dimensions) : [];
 
   return (
     <Stack spacing={{ xs: 3, md: 4 }}>
@@ -128,6 +211,9 @@ export default function UploadPage() {
               {fileInput}
               {preview ? (
                 <Box component="img" src={preview} alt="Ảnh lá cà chua đã chọn"
+                  onLoad={(event) => setDimensions({
+                    width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight,
+                  })}
                   sx={{ display: 'block', width: '100%', height: { xs: 280, sm: 380 }, objectFit: 'contain' }} />
               ) : (
                 <Stack spacing={1.5} sx={{ height: { xs: 260, sm: 380 }, alignItems: 'center', justifyContent: 'center', px: 3, textAlign: 'center' }}>
@@ -148,8 +234,13 @@ export default function UploadPage() {
             {file && (
               <Typography variant="body2" color="text.secondary" noWrap sx={{ mt: 1.5 }}>
                 {file.name} · {formatSize(file.size)}
+                {dimensions && ` · ${dimensions.width}×${dimensions.height} px`}
               </Typography>
             )}
+
+            {warnings.map((warning) => (
+              <Alert key={warning} severity="warning" sx={{ mt: 1.5 }}>{warning}</Alert>
+            ))}
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 2 }}>
               <Button variant="outlined" size="large" component="label" disabled={submitting}
@@ -157,6 +248,14 @@ export default function UploadPage() {
                 {file ? 'Đổi ảnh khác' : 'Chọn ảnh lá cà chua'}
                 {fileInput}
               </Button>
+              {coarsePointer && (
+                <Button variant="outlined" size="large" component="label" disabled={submitting}
+                  startIcon={<PhotoCameraOutlinedIcon />}>
+                  Chụp ảnh
+                  <input hidden type="file" accept="image/*" capture="environment" onChange={handleFileChange}
+                    disabled={submitting} />
+                </Button>
+              )}
               <Button variant="contained" size="large" disabled={!file || submitting} onClick={handleSubmit}
                 startIcon={submitting ? <CircularProgress size={18} color="inherit" /> : <ImageSearchIcon />}
                 sx={{ flexGrow: 1 }}>
@@ -169,6 +268,10 @@ export default function UploadPage() {
         <Card sx={{ bgcolor: 'primary.light', borderColor: 'transparent' }}>
           <CardContent sx={{ p: 3, '&:last-child': { pb: 3 } }}>
             <Typography variant="h6" component="h2" sx={{ mb: 2 }}>Mẹo chụp ảnh để kết quả chính xác</Typography>
+            <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: '1fr 1fr', mb: 2.5 }}>
+              <PhotoExample good />
+              <PhotoExample good={false} />
+            </Box>
             <Stack component="ul" spacing={1.5} sx={{ m: 0, p: 0, listStyle: 'none' }}>
               {PHOTO_TIPS.map((tip) => (
                 <Stack component="li" key={tip} direction="row" spacing={1.25} sx={{ alignItems: 'flex-start' }}>

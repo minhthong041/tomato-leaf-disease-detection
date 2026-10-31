@@ -2,9 +2,12 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined';
 import HealthAndSafetyOutlinedIcon from '@mui/icons-material/HealthAndSafetyOutlined';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, LinearProgress, Stack, Typography,
+  Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, LinearProgress, Link as MuiLink, Stack,
+  Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { useEffect, useState } from 'react';
@@ -13,8 +16,11 @@ import { Link, useParams } from 'react-router';
 import { errorMessage } from '../api/client';
 import { getDiagnosis } from '../api/diagnoses';
 import BookmarkButton from '../components/BookmarkButton';
+import ClaheHistogram from '../components/ClaheHistogram';
 import DiseaseRecommendation from '../components/DiseaseRecommendation';
 import FeedbackDialog from '../components/FeedbackDialog';
+import LesionTable from '../components/LesionTable';
+import LesionViewer from '../components/LesionViewer';
 import ResultWarning from '../components/ResultWarning';
 import SeverityGauge from '../components/SeverityGauge';
 import StepGallery from '../components/StepGallery';
@@ -43,25 +49,13 @@ function StatTile({ label, value, color }) {
   );
 }
 
-// Ảnh gốc hoặc ảnh kết quả, kèm chú thích. fit="contain" giữ trọn ảnh không vuông (ảnh gốc 4:3 từ điện thoại);
-// ảnh kết quả đã được pipeline đưa về 512×512 nên "cover" không cắt gì.
-function ResultImage({ src, alt, caption, fit = 'cover' }) {
-  return (
-    <Box component="figure" sx={{ m: 0, minWidth: 0 }}>
-      <Box component="img" src={src} alt={alt}
-        sx={{ display: 'block', width: '100%', aspectRatio: '1 / 1', objectFit: fit, borderRadius: '10px', bgcolor: 'grey.100' }} />
-      <Typography component="figcaption" variant="body2" color="text.secondary" sx={{ mt: 1, fontWeight: 500 }}>
-        {caption}
-      </Typography>
-    </Box>
-  );
-}
-
 export default function ResultPage() {
   const { id } = useParams();
   const [diagnosis, setDiagnosis] = useState(null);
   const [error, setError] = useState('');
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // Đốm bệnh đang chọn ở bảng đốm: khung của nó sáng lên trên ảnh
+  const [highlighted, setHighlighted] = useState(null);
 
   // Pipeline chạy sau khi tải ảnh: hỏi lại định kỳ tới khi done/failed
   useEffect(() => {
@@ -143,6 +137,9 @@ export default function ResultPage() {
   const lowConfidence = isLowConfidence(diagnosis);
   const withSeverityAdvice = showSeverityAdvice(diagnosis);
   const hasDiseaseAdvice = Boolean(disease && diseaseAdvice);
+  const lesions = diagnosis.lesions ?? [];
+  const stepImage = (name) => diagnosis.steps?.find((item) => item.step === name)?.image;
+  const histogramImages = [stepImage('denoised'), stepImage('clahe')];
 
   const summary = (
     <Card>
@@ -197,10 +194,18 @@ export default function ResultPage() {
 
   return (
     <Stack spacing={3}>
+      {/* Chỉ hiện khi in: trang in không có thanh điều hướng nên ghi tên hệ thống và mã kết quả */}
+      <Typography variant="body2" color="text.secondary" sx={{ display: 'none', displayPrint: 'block' }}>
+        Chẩn Đoán Bệnh Lá Cà Chua · Kết quả #{diagnosis.id}
+      </Typography>
+
       <Stack direction="row" spacing={1} useFlexGap
-        sx={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+        sx={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', displayPrint: 'none' }}>
         {backButton}
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+          <Button variant="outlined" startIcon={<PrintOutlinedIcon />} onClick={() => window.print()}>
+            In / Lưu PDF
+          </Button>
           <BookmarkButton diagnosis={diagnosis} onChange={setDiagnosis} />
           <FeedbackDialog historyId={diagnosis.id} open={feedbackOpen} onOpenChange={setFeedbackOpen}
             suggestedTitle={hasWarnings ? WARNING_FEEDBACK_TITLE : ''} />
@@ -214,12 +219,25 @@ export default function ResultPage() {
         <Box sx={{ order: { xs: 2, md: 1 }, minWidth: 0 }}>
           <Card>
             <CardContent sx={CARD_CONTENT_SX}>
-              <Typography variant="h6" component="h2" sx={{ mb: 2 }}>Ảnh phân tích</Typography>
-              <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 }, gridTemplateColumns: '1fr 1fr' }}>
-                <ResultImage src={diagnosis.original_image} alt="Ảnh gốc" caption="Ảnh gốc" fit="contain" />
-                <ResultImage src={diagnosis.processed_image} alt="Ảnh đã khoanh vùng vết bệnh"
-                  caption="Vết bệnh đã khoanh vùng" />
-              </Box>
+              <Stack direction="row" spacing={1} useFlexGap
+                sx={{ justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', mb: 2 }}>
+                <Typography variant="h6" component="h2">Ảnh phân tích</Typography>
+                <MuiLink href={diagnosis.original_image} target="_blank" rel="noopener" variant="body2"
+                  sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, displayPrint: 'none' }}>
+                  Mở ảnh gốc đã tải lên <OpenInNewIcon sx={{ fontSize: 16 }} />
+                </MuiLink>
+              </Stack>
+              <LesionViewer diagnosis={diagnosis} highlighted={highlighted} onHighlight={setHighlighted} />
+              {lesions.length > 0 && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="subtitle1" component="h3">Chi tiết từng đốm bệnh</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, displayPrint: 'none' }}>
+                    Chạm hoặc rê chuột vào một dòng để khoanh đốm đó trên ảnh.
+                  </Typography>
+                  <LesionTable lesions={lesions} leafArea={diagnosis.leaf_area_px}
+                    highlighted={highlighted} onHighlight={setHighlighted} />
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Box>
@@ -264,6 +282,18 @@ export default function ResultPage() {
               {diagnosis.steps.length} ảnh trung gian của quy trình xử lý. Bấm vào ảnh để xem lớn.
             </Typography>
             <StepGallery steps={diagnosis.steps} />
+          </CardContent>
+        </Card>
+      )}
+
+      {histogramImages.every(Boolean) && (
+        <Card sx={{ breakInside: 'avoid' }}>
+          <CardContent sx={CARD_CONTENT_SX}>
+            <Typography variant="h6" component="h2">Histogram độ sáng trước và sau CLAHE</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Phân bố kênh L* (CIELAB) của ảnh sau khử nhiễu và sau cân bằng sáng CLAHE, tính trên toàn ảnh 512×512.
+            </Typography>
+            <ClaheHistogram beforeUrl={histogramImages[0]} afterUrl={histogramImages[1]} />
           </CardContent>
         </Card>
       )}
