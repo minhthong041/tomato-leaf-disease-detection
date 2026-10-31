@@ -8,7 +8,7 @@ Hệ thống gồm ba thành phần chạy riêng:
 
 | Thành phần | Công nghệ | Vai trò |
 |---|---|---|
-| Giao diện (frontend) | React 19, Vite 8, Material UI 9, React Router 7 | Ứng dụng một trang (SPA) chạy trên trình duyệt: đăng ký, tải ảnh, xem kết quả, lịch sử, phản hồi |
+| Giao diện (frontend) | React 19, Vite 8, Material UI 9, React Router 7, font Be Vietnam Pro đóng gói sẵn | Ứng dụng một trang (SPA) chạy trên trình duyệt: đăng ký, tải ảnh, xem kết quả, lịch sử, phản hồi |
 | Máy chủ (backend) | Python 3.12, Django 6.1, Django REST Framework, SimpleJWT | API REST dạng JSON, xác thực, lưu kết quả; gọi pipeline xử lý ảnh (OpenCV, scikit-learn) |
 | Cơ sở dữ liệu | PostgreSQL 17 | Tài khoản, lịch sử chẩn đoán, ảnh từng bước, danh mục bệnh, phản hồi, báo lỗi |
 
@@ -104,27 +104,34 @@ Một số quyết định thiết kế:
 
 ## 3. Giao diện
 
+Giao diện dùng Material UI với bộ màu riêng (xanh lá đậm, đỏ cà chua, nền kem nhạt) và font Be Vietnam Pro đóng gói kèm ứng dụng, nên hiển thị đúng tiếng Việt kể cả khi máy demo không có mạng. Trên máy tính, menu nằm ở thanh đầu trang và tô đậm trang đang mở; trên điện thoại (dưới 600 px), menu chuyển xuống thanh điều hướng ở đáy màn hình. Các trang được kiểm tra ở bề rộng 1280 px và 375 px, không bị tràn ngang.
+
 ### 3.1. Các trang
 
 | Trang | Đường dẫn | Nội dung |
 |---|---|---|
-| Đăng nhập, Đăng ký | `/login`, `/register` | Đăng ký phải đồng ý điều khoản; báo lỗi theo từng ô (email đã dùng, mật khẩu yếu) |
+| Đăng nhập, Đăng ký | `/login`, `/register` | Hai cột trên máy tính (giới thiệu và form). Đăng ký phải đồng ý điều khoản; báo lỗi theo từng ô (email đã dùng, mật khẩu yếu) |
 | Điều khoản | `/terms` | Điều khoản sử dụng, mở được khi chưa đăng nhập |
-| Tải ảnh | `/` | Chọn ảnh JPG/PNG, xem trước, gửi chẩn đoán |
-| Kết quả | `/results/:id` | Ảnh gốc và ảnh khoanh vùng vết bệnh; tên bệnh, độ tin cậy; tỷ lệ S, số đốm, thanh cấp độ 0–4; khuyến nghị theo cấp và theo bệnh; 9 ảnh bước xử lý; nút Lưu, Báo kết quả sai |
-| Lịch sử | `/history` | Danh sách kết quả của mình, lọc "Tất cả" / "Đã lưu" (giữ trên URL), phân trang |
+| Tải ảnh | `/` | Khung chọn ảnh lớn (bấm hoặc kéo thả, chỉ nhận JPG/PNG), xem trước kèm dung lượng và kích thước, cảnh báo ảnh quá nhỏ hoặc quá dài; nút Chụp ảnh trên máy cảm ứng; card "Mẹo chụp ảnh" (nên / không nên) và dải 4 giai đoạn xử lý |
+| Kết quả | `/results/:id` | Xem mục 3.2 |
+| Lịch sử | `/history` | Kết quả của mình kèm ảnh thu nhỏ và cấp độ; lọc "Tất cả" / "Đã lưu"; phân trang 20 mục; bộ lọc và số trang nằm trên URL nên quay lại từ trang kết quả vẫn đúng chỗ |
 | Báo lỗi | `/error-report` | Gửi lỗi ứng dụng cho quản trị viên |
 | Tài khoản | `/account` | Xóa tài khoản, xác nhận bằng mật khẩu |
 
-Các trang cần đăng nhập được bọc trong một thành phần kiểm tra: chưa đăng nhập thì chuyển về `/login`, đăng nhập xong quay lại đúng trang cũ. Mã từng trang được tách thành file riêng và chỉ tải khi mở trang đó.
+Các trang cần đăng nhập được bọc trong một thành phần kiểm tra: chưa đăng nhập thì chuyển về `/login`, đăng nhập xong quay lại đúng trang cũ. Mã từng trang được tách thành file riêng và chỉ tải khi mở trang đó. Ảnh thu nhỏ ở trang Lịch sử dùng ảnh kết quả 512×512 và chỉ tải khi cuộn tới, vì ảnh gốc có thể nặng tới 10 MB.
 
 ### 3.2. Trang kết quả
 
 Trang kết quả là nơi thể hiện toàn bộ pipeline:
-- **Ảnh từng bước**: chuẩn hóa kích thước → khử nhiễu → cân bằng sáng CLAHE → kênh S (HSV) → mặt nạ lá → vùng lá → mặt nạ mô lá khỏe → mặt nạ vết bệnh trước và sau phép mở/đóng hình thái học.
-- **Cấp độ**: thanh 5 mức tô màu từ xanh (Cấp 0) tới đỏ (Cấp 4) kèm khoảng S tương ứng.
-- **Khuyến nghị**: khuyến nghị theo cấp (IPM) và thẻ "Khuyến nghị cho <tên bệnh>" gồm tác nhân, biện pháp và nguồn tham khảo. Với bệnh virus, nhện đỏ và lá khỏe, khuyến nghị chung theo cấp không đúng (ví dụ bệnh virus không có thuốc chữa) nên chỉ hiện khuyến nghị theo bệnh, trừ khi độ tin cậy thấp hoặc lá khỏe mà vẫn có vết bệnh.
+- **Tóm tắt**: tên bệnh, thanh độ tin cậy (chuyển màu cam khi dưới ngưỡng), tỷ lệ S, số đốm, cấp độ và thanh 5 mức tô màu từ xanh (Cấp 0) tới đỏ (Cấp 4) kèm khoảng S tương ứng.
+- **Ảnh phân tích – So sánh trước / sau**: trên ảnh lá đã chuẩn hóa 512×512, kéo thanh chia để so ảnh chuẩn hóa với ảnh đã khoanh viền đỏ quanh vết bệnh (dùng được cả bằng phím mũi tên). Ảnh gốc vẫn mở được qua link "Mở ảnh gốc đã tải lên".
+- **Ảnh phân tích – Lớp phủ mặt nạ**: phủ mặt nạ lá, mặt nạ vết bệnh và khung từng đốm lên ảnh, bật/tắt từng lớp và chỉnh độ đậm. Mặt nạ đen trắng được đổi thành lớp màu bằng bộ lọc SVG ngay trên trình duyệt, không cần thêm API.
+- **Chi tiết từng đốm bệnh**: bảng diện tích, % diện tích lá, chu vi, độ tròn và tâm của từng đốm (trường `lesions`), xếp theo diện tích; rê chuột hoặc chạm vào một dòng thì đốm đó được khoanh trên ảnh. Tổng % diện tích lá của các đốm bằng tỷ lệ S.
+- **Ảnh từng bước**: 9 ảnh chia theo 3 giai đoạn của `steps.py`: tiền xử lý (chuẩn hóa kích thước, khử nhiễu, cân bằng sáng CLAHE), tách lá (kênh S, mặt nạ lá), tách vết bệnh (vùng lá, mặt nạ mô lá khỏe, mặt nạ vết bệnh trước và sau phép mở/đóng hình thái học). Bấm vào ảnh để phóng to.
+- **Histogram độ sáng trước và sau CLAHE**: phân bố kênh L* của ảnh sau khử nhiễu và sau CLAHE, kèm trung bình và độ lệch chuẩn. Trình duyệt tự đọc điểm ảnh của hai ảnh bước này rồi vẽ, không cần API riêng; khi chạy bằng Docker, ảnh và giao diện cùng địa chỉ nên đọc được trực tiếp.
+- **Khuyến nghị**: khuyến nghị theo cấp (IPM) và card "Khuyến nghị cho <tên bệnh>" gồm tác nhân, biện pháp và nguồn tham khảo. Với bệnh virus, nhện đỏ và lá khỏe, khuyến nghị chung theo cấp không đúng (ví dụ bệnh virus không có thuốc chữa) nên chỉ hiện khuyến nghị theo bệnh, trừ khi độ tin cậy thấp hoặc lá khỏe mà vẫn có vết bệnh.
 - **Cảnh báo kết quả đáng ngờ**: khung màu cam khi độ tin cậy dưới **0,55**, hoặc khi tên bệnh mâu thuẫn với cấp độ (lá khỏe nhưng Cấp ≥ 1; lớp bệnh nhưng Cấp 0, trừ hai bệnh virus vốn không có đốm). Ngưỡng 0,55 lấy theo đánh giá mô hình: trên tập test, ngưỡng này cảnh báo 12,2% số ảnh và bắt được 55,7% số dự đoán sai. Khung cảnh báo có nút mở hộp **Báo kết quả sai** với tiêu đề điền sẵn, để thu thập ảnh khó cho lần huấn luyện sau.
+- **In / Lưu PDF**: bản in ẩn menu và các nút, ghi mã kết quả ở đầu trang, in đủ mọi dòng của bảng đốm.
 
 ## 4. Đóng gói và triển khai bằng Docker
 
@@ -142,5 +149,5 @@ Cả hệ thống chạy bằng một lệnh `docker compose up` từ thư mục
 
 ## 5. Kiểm thử
 
-- **Tự động**: khoảng 200 test chạy bằng `python manage.py test api image_processing experiments`, gồm test API (đăng ký, xác thực, chẩn đoán, quyền truy cập, lưu, phản hồi, xóa tài khoản, khuyến nghị đủ cho 10 lớp) và test các module xử lý ảnh. GitHub Actions chạy toàn bộ test, kiểm tra migration, lint và build frontend cho mỗi pull request; pull request chỉ được merge khi CI đạt và có người duyệt.
-- **Thủ công**: kịch bản demo ([docs/demo.md](demo.md)) chạy trên bản Docker: đăng ký, tải ảnh, xem các bước xử lý, cấp độ, khuyến nghị, lưu, lịch sử, phản hồi, với bộ ảnh mẫu gồm mỗi lớp một ảnh, một ảnh độ tin cậy thấp và một ảnh không dùng được.
+- **Tự động**: khoảng 260 test chạy bằng `python manage.py test api image_processing experiments`, gồm test API (đăng ký, xác thực, chẩn đoán, quyền truy cập, lưu, phản hồi, xóa tài khoản, khuyến nghị đủ cho 10 lớp) và test các module xử lý ảnh. GitHub Actions chạy toàn bộ test, kiểm tra migration, lint và build frontend cho mỗi pull request; pull request chỉ được merge khi CI đạt và có người duyệt.
+- **Thủ công**: kịch bản demo ([docs/demo.md](demo.md)) chạy trên bản Docker: 16 bước, gồm đăng ký, tải ảnh, so sánh trước/sau, lớp phủ và bảng đốm, các bước xử lý, histogram CLAHE, khuyến nghị, lưu, in, lịch sử, phản hồi, với bộ ảnh mẫu gồm mỗi lớp một ảnh, một ảnh độ tin cậy thấp và một ảnh không dùng được.
