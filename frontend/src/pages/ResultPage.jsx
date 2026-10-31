@@ -19,7 +19,7 @@ import ResultWarning from '../components/ResultWarning';
 import SeverityGauge from '../components/SeverityGauge';
 import StepGallery from '../components/StepGallery';
 import {
-  LOW_CONFIDENCE_THRESHOLD, SEVERITY_LEVELS, STATUS_LABELS, formatPercent, resultWarnings, showSeverityAdvice,
+  SEVERITY_LEVELS, STATUS_LABELS, formatPercent, isLowConfidence, resultWarnings, showSeverityAdvice,
 } from '../constants/diagnosis';
 
 const POLL_INTERVAL_MS = 2000;
@@ -43,12 +43,13 @@ function StatTile({ label, value, color }) {
   );
 }
 
-// Ảnh gốc hoặc ảnh kết quả, kèm chú thích
-function ResultImage({ src, alt, caption }) {
+// Ảnh gốc hoặc ảnh kết quả, kèm chú thích. fit="contain" giữ trọn ảnh không vuông (ảnh gốc 4:3 từ điện thoại);
+// ảnh kết quả đã được pipeline đưa về 512×512 nên "cover" không cắt gì.
+function ResultImage({ src, alt, caption, fit = 'cover' }) {
   return (
     <Box component="figure" sx={{ m: 0, minWidth: 0 }}>
       <Box component="img" src={src} alt={alt}
-        sx={{ display: 'block', width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: '10px', bgcolor: 'grey.100' }} />
+        sx={{ display: 'block', width: '100%', aspectRatio: '1 / 1', objectFit: fit, borderRadius: '10px', bgcolor: 'grey.100' }} />
       <Typography component="figcaption" variant="body2" color="text.secondary" sx={{ mt: 1, fontWeight: 500 }}>
         {caption}
       </Typography>
@@ -139,7 +140,7 @@ export default function ResultPage() {
   const diseaseAdvice = diagnosis.disease_recommendation;
   const level = SEVERITY_LEVELS[diagnosis.severity_level];
   const confidence = diagnosis.disease_confidence == null ? null : Number(diagnosis.disease_confidence);
-  const lowConfidence = confidence != null && confidence < LOW_CONFIDENCE_THRESHOLD;
+  const lowConfidence = isLowConfidence(diagnosis);
   const withSeverityAdvice = showSeverityAdvice(diagnosis);
   const hasDiseaseAdvice = Boolean(disease && diseaseAdvice);
 
@@ -215,7 +216,7 @@ export default function ResultPage() {
             <CardContent sx={CARD_CONTENT_SX}>
               <Typography variant="h6" component="h2" sx={{ mb: 2 }}>Ảnh phân tích</Typography>
               <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 }, gridTemplateColumns: '1fr 1fr' }}>
-                <ResultImage src={diagnosis.original_image} alt="Ảnh gốc" caption="Ảnh gốc" />
+                <ResultImage src={diagnosis.original_image} alt="Ảnh gốc" caption="Ảnh gốc" fit="contain" />
                 <ResultImage src={diagnosis.processed_image} alt="Ảnh đã khoanh vùng vết bệnh"
                   caption="Vết bệnh đã khoanh vùng" />
               </Box>

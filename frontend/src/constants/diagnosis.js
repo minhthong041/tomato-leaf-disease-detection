@@ -44,6 +44,12 @@ export function formatPercent(ratio, digits = 2) {
 // trên tập test cảnh báo 12,2% ảnh, bắt 55,7% dự đoán sai. Trùng backend/experiments/pick_demo_images.py.
 export const LOW_CONFIDENCE_THRESHOLD = 0.55;
 
+// Độ tin cậy của kết quả có thấp hơn ngưỡng không (false nếu chưa có độ tin cậy)
+export function isLowConfidence(diagnosis) {
+  const confidence = diagnosis.disease_confidence == null ? null : Number(diagnosis.disease_confidence);
+  return confidence != null && confidence < LOW_CONFIDENCE_THRESHOLD;
+}
+
 // Bệnh do virus: lá xoăn, vàng hoặc khảm màu chứ không có đốm riêng, nên Cấp 0 (không tách được vết bệnh)
 // là kết quả bình thường. Bộ mask chuẩn 1D: 6/6 ảnh của hai lớp này có mask vết bệnh rỗng.
 // Trùng diseases.code ở backend.
@@ -56,11 +62,10 @@ export const NO_LESION_DISEASE_CODES = [
 export function resultWarnings(diagnosis) {
   const warnings = [];
   const { disease, severity_level: level } = diagnosis;
-  const confidence = diagnosis.disease_confidence == null ? null : Number(diagnosis.disease_confidence);
 
-  if (confidence != null && confidence < LOW_CONFIDENCE_THRESHOLD) {
+  if (isLowConfidence(diagnosis)) {
     warnings.push(
-      `Độ tin cậy chỉ ${formatPercent(confidence, 1)}, thấp hơn ngưỡng ${formatPercent(LOW_CONFIDENCE_THRESHOLD, 0)}: `
+      `Độ tin cậy chỉ ${formatPercent(diagnosis.disease_confidence, 1)}, thấp hơn ngưỡng ${formatPercent(LOW_CONFIDENCE_THRESHOLD, 0)}: `
       + 'mô hình chưa chắc chắn về tên bệnh.',
     );
   }
@@ -83,8 +88,7 @@ export function resultWarnings(diagnosis) {
 export function showSeverityAdvice(diagnosis) {
   const { disease, disease_recommendation: advice, severity_level: level } = diagnosis;
   if (!advice?.replaces_severity_advice) return true;
-  const confidence = diagnosis.disease_confidence == null ? null : Number(diagnosis.disease_confidence);
-  if (confidence != null && confidence < LOW_CONFIDENCE_THRESHOLD) return true;
+  if (isLowConfidence(diagnosis)) return true;
   if (disease?.is_healthy && level != null && level >= 1) return true;
   return false;
 }
