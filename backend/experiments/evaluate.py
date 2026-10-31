@@ -33,7 +33,8 @@ Cách tính
 - Ảnh có S thật cách một ngưỡng cấp (5%, 15%, 35%) dưới NEAR_THRESHOLD_RATIO lần ngưỡng đó (dưới 0,5 / 1,5 /
   3,5 điểm %) được đánh dấu sat_nguong: lệch cấp ở các ảnh này chủ yếu do sai số tô tay chứ chưa chắc do
   pipeline. Dung sai tỉ lệ với ngưỡng vì sai số tô tay tăng theo diện tích vết bệnh. Với bộ mask hiện tại
-  quy tắc này đánh dấu đúng 4 ảnh ghi trong GHI_CHU.txt (#5, #10, #16, #18).
+  quy tắc này đánh dấu đúng 4 ảnh ghi trong GHI_CHU.txt (#5, #10, #16, #18); mọi tỉ lệ từ 7% đến 12% đều
+  cho cùng 4 ảnh, nên kết quả không phụ thuộc việc chọn đúng 10%.
 """
 import argparse
 import csv
@@ -175,6 +176,7 @@ def evaluate_image(leaf_true: np.ndarray, lesion_true: np.ndarray,
     has_lesion = cv2.countNonZero(lesion_true) > 0
     return {
         'iou_la': iou(leaf_pred, leaf_true),
+        'co_vet_benh': has_lesion,
         'iou_vet_benh': iou(lesion_pred, lesion_true) if has_lesion else None,
         'dice_vet_benh': dice(lesion_pred, lesion_true) if has_lesion else None,
         's_that': s_true,
@@ -227,7 +229,7 @@ def draw_overlay(image: np.ndarray, leaf_true: np.ndarray, lesion_true: np.ndarr
     # Font Hershey của cv2.putText chỉ vẽ được ký tự ASCII nên chữ trên hình viết không dấu
     _put_text(panel, title, (10, 22))
     if row:
-        lesion = 'khong co vet benh chuan' if row['iou_vet_benh'] is None else f'IoU {row["iou_vet_benh"]:.2f}'
+        lesion = f'IoU {row["iou_vet_benh"]:.2f}' if row['co_vet_benh'] else 'khong co vet benh chuan'
         level_pred = '-' if row['cap_du_doan'] is None else row['cap_du_doan']
         _put_text(panel, f'La: IoU {row["iou_la"]:.2f}  |  Vet benh: {lesion}  |  '
                          f'S that {row["s_that"]:.1f}% -> du doan {row["s_du_doan"]:.1f}%  |  '
@@ -292,8 +294,8 @@ def summarize(rows: list[dict]) -> dict:
     trống chỉ đếm ở bao_nham (trên so_anh_trong ảnh).
     """
     ok = [row for row in rows if not row['loi']]
-    empty = [row for row in ok if row['iou_vet_benh'] is None]
-    with_lesion = [row for row in ok if row['iou_vet_benh'] is not None]
+    empty = [row for row in ok if not row['co_vet_benh']]
+    with_lesion = [row for row in ok if row['co_vet_benh']]
     return {
         'so_anh': len(ok),
         'iou_la': _mean(row['iou_la'] for row in ok),

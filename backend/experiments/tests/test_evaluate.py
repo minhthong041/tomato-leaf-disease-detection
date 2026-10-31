@@ -55,6 +55,7 @@ class EvaluateImageTests(TestCase):
         lesion_pred = rect_mask(0, 0, 10, 40) # 400 điểm = 20% -> cấp 3
         row = evaluate.evaluate_image(leaf, lesion_true, leaf, lesion_pred)
         self.assertEqual(row['iou_la'], 1.0)
+        self.assertTrue(row['co_vet_benh'])
         self.assertAlmostEqual(row['iou_vet_benh'], 0.5)
         self.assertAlmostEqual(row['s_that'], 10.0)
         self.assertAlmostEqual(row['s_du_doan'], 20.0)
@@ -65,6 +66,7 @@ class EvaluateImageTests(TestCase):
     def test_empty_lesion_truth_skips_lesion_overlap(self):
         leaf = rect_mask(0, 0, 40, 50)
         row = evaluate.evaluate_image(leaf, EMPTY, leaf, rect_mask(0, 0, 2, 2))
+        self.assertFalse(row['co_vet_benh'])
         self.assertIsNone(row['iou_vet_benh'])
         self.assertIsNone(row['dice_vet_benh'])
         self.assertEqual(row['cap_that'], 0)
@@ -85,7 +87,7 @@ class EvaluateImageTests(TestCase):
 
 
 def summary_row(cap_that, cap_du_doan, has_lesion=True, loi=''):
-    return {'loi': loi, 'iou_la': 0.9, 'iou_vet_benh': 0.5 if has_lesion else None,
+    return {'loi': loi, 'co_vet_benh': has_lesion, 'iou_la': 0.9, 'iou_vet_benh': 0.5 if has_lesion else None,
             'dice_vet_benh': 0.6 if has_lesion else None, 'sai_so_s': 1.0,
             'cap_that': cap_that, 'cap_du_doan': cap_du_doan, 's_du_doan': 0.0 if cap_du_doan == 0 else 3.0}
 
